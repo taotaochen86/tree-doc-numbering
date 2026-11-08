@@ -1,0 +1,10 @@
+{
+  "name": "tree-doc-numbering",
+  "version": "0.9.2",
+  "description": "树文联动编号 / tree-doc numbering — SiYuan plugin",
+  "author": "ttChen",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/taotaochen86/tree-doc-numbering.git"
+  }
+}
