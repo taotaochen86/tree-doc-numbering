@@ -1,7 +1,7 @@
 {
   "name": "tree-doc-numbering",
   "author": "ttChen",
-  "version": "0.9.3",
+  "version": "0.9.4",
   "minAppVersion": "3.8.9",
   "backends": [
     "windows",

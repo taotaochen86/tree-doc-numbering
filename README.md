@@ -332,6 +332,10 @@ python deploy.py --check            # 核对源码与线上部署副本 4 文件
 
 ## 版本史
 
+### v0.9.4（2026-11-08）
+
+**界面支持中英文**：新增 `src/i18n_ui.js`（中文短语 → 英文映射 + `trText()` / `msg()` / `trDom()`），按 `window.siyuan.config.lang` 自动切换；设置面板、右键菜单、提示消息、顶栏、命令名全部双语。命令名走思源官方 `i18n/zh_CN.json` / `en_US.json`（5 键），`package.zip` 同步带上两份语言文件。内置中文编号模板、示例中文与控制台日志保持原样；编号逻辑未改。
+
 ### v0.9.3（2026-11-08）
 
 新增**英文全文对照 README**（`README_en.md`，11 节 + 版本史表）；`plugin.json` 的 `readme` 改为按界面语言分流（`default` → `README_en.md`、`zh_CN` → `README.md`）；`build.py` 打包清单与 `deploy.py` 部署清单同步加入 `README_en.md`，`package.zip` 根层由 4 文件变 5 文件。功能与编号逻辑未改。

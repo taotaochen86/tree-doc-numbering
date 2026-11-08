@@ -333,6 +333,7 @@ Condensed in English; the full Chinese changelog is in `README.md`.
 
 | Version | Date | Main change |
 |---|---|---|
+| 0.9.4 | 2026-11-08 | Full bilingual UI: settings panel, context menus, toasts and command names follow `window.siyuan.config.lang`; official `i18n/` files bundled |
 | 0.9.3 | 2026-11-08 | Added full English README, made `readme` language-aware, added `README_en.md` to build/deploy/package manifests |
 | 0.9.2 | 2026-11-08 | Renamed to 树文联动编号 / tree-doc numbering, package name → `tree-doc-numbering`; config migration and old plugin disabled |
 | 0.9.1 | 2026-11-08 | Slimmed `custom-doc-num-meta` to `rootID` / `rootNum` / `targetId`; legacy 5-field values still readable |

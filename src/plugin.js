@@ -15,7 +15,7 @@ const DN = globalThis.DocNumbering;
 const BN = globalThis.BodyNumbering;
 
 /* 版本号唯一来源：build.py 会拿它和 plugin.json 的 version 比对，不一致直接报错。 */
-const PLUGIN_VERSION = "0.9.3";
+const PLUGIN_VERSION = "0.9.4";
 
 const UNDO_FILE = "undo-last.json";
 const BODY_UNDO_FILE = "body-undo-last.json";
@@ -457,7 +457,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                 langText: "正文标题：设为 " + level + " 级并编号",
                 hotkey: "",
                 callback: () => this.numberBodyAtCursor(level).catch((e) =>
-                    showMessage("正文编号失败：" + e.message, 8000, "error")),
+                    msg("正文编号失败：" + e.message, 8000, "error")),
             });
         }
         this._onBodyHotkey = (ev) => this.onBodyHotkey(ev);
@@ -467,10 +467,10 @@ module.exports = class DocNumberPlugin extends Plugin {
 
         this._topBar = this.addTopBar({
             icon: MENU_ICON,
-            title: "标题体系自动编号：读取中…",
+            title: trText("标题体系自动编号：读取中…"),
             position: "right",
             callback: () => this.openPanel().catch((e) =>
-                showMessage("面板打开失败：" + e.message, 6000, "error")),
+                msg("面板打开失败：" + e.message, 6000, "error")),
         });
         // 预取笔记本列表，右键菜单同步判断「文档 / 笔记本」时不用等网络
         this.notebooks().catch(() => {});
@@ -623,22 +623,22 @@ module.exports = class DocNumberPlugin extends Plugin {
             const nbTarget = {type: "notebook", id: box, name};
             detail.menu.addItem({
                 icon: MENU_ICON,
-                label: "编号：文档标题 + 内容标题",
+                label: trText("编号：文档标题 + 内容标题"),
                 click: () => this.numberBoth(nbTarget).catch((e) =>
-                    showMessage("编号失败：" + e.message, 8000, "error")),
+                    msg("编号失败：" + e.message, 8000, "error")),
             });
             this.addRangeMenuItem(detail.menu, nbTarget);
             detail.menu.addItem({type: "separator"});
             detail.menu.addItem({
                 icon: "iconUndo",
-                label: "撤销",
+                label: trText("撤销"),
                 submenu: [
-                    {icon: "iconFiles", label: "撤销文档标题编号",
+                    {icon: "iconFiles", label: trText("撤销文档标题编号"),
                      click: () => this.undoNumbering().catch((e) =>
-                         showMessage("撤销失败：" + e.message, 8000, "error"))},
-                    {icon: "iconFiles", label: "撤销内容标题编号",
+                         msg("撤销失败：" + e.message, 8000, "error"))},
+                    {icon: "iconFiles", label: trText("撤销内容标题编号"),
                      click: () => this.undoBodyNumbering().catch((e) =>
-                         showMessage("撤销失败：" + e.message, 8000, "error"))},
+                         msg("撤销失败：" + e.message, 8000, "error"))},
                 ],
             });
             return;
@@ -655,29 +655,29 @@ module.exports = class DocNumberPlugin extends Plugin {
         };
         detail.menu.addItem({
             icon: MENU_ICON,
-            label: "编号：文档标题 + 内容标题",
+            label: trText("编号：文档标题 + 内容标题"),
             click: () => this.numberBoth(target).catch((e) =>
-                showMessage("编号失败：" + e.message, 8000, "error")),
+                msg("编号失败：" + e.message, 8000, "error")),
         });
         detail.menu.addItem({
             icon: "iconRefresh",
-            label: "只编号内容标题",
+            label: trText("只编号内容标题"),
             click: () => this.numberBodyOnly(target).catch((e) =>
-                showMessage("编号失败：" + e.message, 8000, "error")),
+                msg("编号失败：" + e.message, 8000, "error")),
         });
         this.addRangeMenuItem(detail.menu, target);
         this.addExcludeMenuItems(detail.menu, target);
         detail.menu.addItem({type: "separator"});
         detail.menu.addItem({
             icon: "iconUndo",
-            label: "撤销",
+            label: trText("撤销"),
             submenu: [
-                {icon: "iconFiles", label: "撤销文档标题编号",
+                {icon: "iconFiles", label: trText("撤销文档标题编号"),
                  click: () => this.undoNumbering().catch((e) =>
-                     showMessage("撤销失败：" + e.message, 8000, "error"))},
-                {icon: "iconFiles", label: "撤销内容标题编号",
+                     msg("撤销失败：" + e.message, 8000, "error"))},
+                {icon: "iconFiles", label: trText("撤销内容标题编号"),
                  click: () => this.undoBodyNumbering().catch((e) =>
-                     showMessage("撤销失败：" + e.message, 8000, "error"))},
+                     msg("撤销失败：" + e.message, 8000, "error"))},
             ],
         });
     }
@@ -687,15 +687,15 @@ module.exports = class DocNumberPlugin extends Plugin {
         const cfg = this._config || DEFAULT_CONFIG;
         const found = (cfg.excluded || []).find((e) => e.id === target.id);
         const sub = found
-            ? [{icon: "iconCheck", label: "取消排除（恢复参与编号）",
+            ? [{icon: "iconCheck", label: trText("取消排除（恢复参与编号）"),
                 click: () => this.toggleExclude(target, "off").catch((e) =>
-                    showMessage("取消排除失败：" + e.message, 8000, "error"))}]
-            : [{icon: "iconClose", label: "仅自身不编号（子文档照常）",
+                    msg("取消排除失败：" + e.message, 8000, "error"))}]
+            : [{icon: "iconClose", label: trText("仅自身不编号（子文档照常）"),
                 click: () => this.toggleExclude(target, "self").catch((e) =>
-                    showMessage("排除失败：" + e.message, 8000, "error"))},
-               {icon: "iconClose", label: "整支不编号（含子文档）",
+                    msg("排除失败：" + e.message, 8000, "error"))},
+               {icon: "iconClose", label: trText("整支不编号（含子文档）"),
                 click: () => this.toggleExclude(target, "subtree").catch((e) =>
-                    showMessage("排除失败：" + e.message, 8000, "error"))}];
+                    msg("排除失败：" + e.message, 8000, "error"))}];
         menu.addItem({
             icon: found ? "iconCheck" : "iconClose",
             label: found ? "排除（当前已排除）" : "排除此文档",
@@ -710,7 +710,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (!ids.length) return {ok: false, reason: "no-docs"};
         const r = await this.numberBodyRange(ids, {source: "menu", silent: !o.verbose});
         if (!o.silent) {
-            showMessage(r.ok ? ("已给 " + (r.docsHit || 0) + " 篇、共 " + (r.changed || 0) + " 处内容标题编号")
+            msg(r.ok ? ("已给 " + (r.docsHit || 0) + " 篇、共 " + (r.changed || 0) + " 处内容标题编号")
                              : ("编号中断，已改 " + (r.changed || 0) + " 处，可在面板撤销"),
                         r.ok ? 7000 : 9000, r.ok ? "info" : "error");
         }
@@ -743,10 +743,10 @@ module.exports = class DocNumberPlugin extends Plugin {
             catch (e) { results.push({error: e.message}); }
         }
         if (mode !== "off") {
-            showMessage("已排除「" + name + "」" + (mode === "subtree" ? "及其子文档" : "（仅自身）")
+            msg("已排除「" + name + "」" + (mode === "subtree" ? "及其子文档" : "（仅自身）")
                 + "，编号已重排", 7000, "info");
         } else {
-            showMessage("已取消排除「" + (target.name || target.id) + "」，编号已重排", 7000, "info");
+            msg("已取消排除「" + (target.name || target.id) + "」，编号已重排", 7000, "info");
         }
         return {ok: true, excluded: cfg.excluded.slice(), results};
     }
@@ -759,7 +759,7 @@ module.exports = class DocNumberPlugin extends Plugin {
             icon: on ? "iconClose" : "iconCheck",
             label: on ? "取消该范围的自动编号" : "设为自动编号范围（新增/删除/拖动自动重排）",
             click: () => this.toggleTarget(target).catch((e) =>
-                showMessage("设置失败：" + e.message, 8000, "error")),
+                msg("设置失败：" + e.message, 8000, "error")),
         });
     }
 
@@ -773,7 +773,7 @@ module.exports = class DocNumberPlugin extends Plugin {
             delete this._fp[key];
             await this.saveConfig();
             this.refreshTopBar();
-            showMessage("已取消自动编号范围：" + target.name, 5000, "info");
+            msg("已取消自动编号范围：" + target.name, 5000, "info");
             return {ok: true, enabled: false};
         }
         // 菜单是同步挂的，没来得及查 box/name；这里补齐再存（collect 也能自己查，但配置里要有可读名字）
@@ -791,7 +791,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         delete this._fp[key];
         await this.saveConfig();
         this.refreshTopBar();
-        showMessage("已设为自动编号范围：" + target.name + "。现在新增 / 删除 / 拖动子文档会自动重排编号", 8000, "info");
+        msg("已设为自动编号范围：" + target.name + "。现在新增 / 删除 / 拖动子文档会自动重排编号", 8000, "info");
         // 设定后立刻编一次，省得用户还要手动点
         try { await this.runNumbering(target, {silent: true}); } catch (e) { /* 不阻断设置 */ }
         return {ok: true, enabled: true};
@@ -862,7 +862,7 @@ module.exports = class DocNumberPlugin extends Plugin {
             catch (e) { errors.push(e.message); }
         }
         if (!o.silent) {
-            showMessage("编号设置已保存（" + next.maxLevel + " 级），已重排 " + reran + " 个范围", 6000,
+            msg("编号设置已保存（" + next.maxLevel + " 级），已重排 " + reran + " 个范围", 6000,
                 errors.length ? "error" : "info");
         }
         return {ok: !errors.length, scope: key, formats: next.formats,
@@ -1087,9 +1087,10 @@ module.exports = class DocNumberPlugin extends Plugin {
             + "<button class='b3-button b3-button--text' id='dn-close'>关闭</button></div>"
             + "</div>";
 
-        const dlg = new Dialog({title: "树文联动编号", content: html,
+        const dlg = new Dialog({title: trText("树文联动编号"), content: trText(html),
                                 width: "640px", height: "min(92vh, 960px)"});
         const root = dlg.element;
+        trDom(root);
         const q = (s) => root.querySelector(s);
         const selScope = q("#dn-scope");
         const fInputs = [1, 2, 3, 4, 5].map((lv) => q("#dn-f" + lv));
@@ -1198,12 +1199,12 @@ module.exports = class DocNumberPlugin extends Plugin {
                 /* v0.8.2：正文模板换了 → 立刻按新模板重排范围内正文（先剔老号）。
                  * 以前只存设置，要等你自己点「现在编」，老编号就一直挂在那儿。 */
                 if (saved && saved.changed) {
-                    showMessage("正文模板已切换，正在按新模板重排（会先剔除老编号）…", 4000, "info");
+                    msg("正文模板已切换，正在按新模板重排（会先剔除老编号）…", 4000, "info");
                     this.rerunBodyForSwitch({source: "format-switch"}).catch((e) =>
-                        showMessage("正文重排失败：" + e.message, 9000, "error"));
+                        msg("正文重排失败：" + e.message, 9000, "error"));
                 }
             } catch (e) {
-                showMessage("编号设置保存失败：" + e.message, 8000, "error");
+                msg("编号设置保存失败：" + e.message, 8000, "error");
             }
         });
         const btnResetFmt = q("#dn-freset");
@@ -1220,12 +1221,12 @@ module.exports = class DocNumberPlugin extends Plugin {
                 await this.resetFormats(scope);
                 dlg.destroy();
                 if (saved && saved.changed) {
-                    showMessage("已恢复内置正文模板，正在重排（会先剔除老编号）…", 4000, "info");
+                    msg("已恢复内置正文模板，正在重排（会先剔除老编号）…", 4000, "info");
                     this.rerunBodyForSwitch({source: "format-reset"}).catch((e) =>
-                        showMessage("正文重排失败：" + e.message, 9000, "error"));
+                        msg("正文重排失败：" + e.message, 9000, "error"));
                 }
             } catch (e) {
-                showMessage("恢复默认失败：" + e.message, 8000, "error");
+                msg("恢复默认失败：" + e.message, 8000, "error");
             }
         });
 
@@ -1263,12 +1264,12 @@ module.exports = class DocNumberPlugin extends Plugin {
         });
         const btnRun = q("#dn-run");
         if (btnRun) btnRun.addEventListener("click", () => {
-            this.runAll({silent: false}).catch((e) => showMessage("重排失败：" + e.message, 8000, "error"));
+            this.runAll({silent: false}).catch((e) => msg("重排失败：" + e.message, 8000, "error"));
             dlg.destroy();
         });
         const btnUndo = q("#dn-undo");
         if (btnUndo) btnUndo.addEventListener("click", () => {
-            this.undoNumbering().catch((e) => showMessage("撤销失败：" + e.message, 8000, "error"));
+            this.undoNumbering().catch((e) => msg("撤销失败：" + e.message, 8000, "error"));
             dlg.destroy();
         });
         /* 正文标题编号：开关 / 模板 / 实时预览 / 保存 / 恢复 / 撤销（v0.5.0） */
@@ -1317,7 +1318,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         const btnBUndo = q("#dn-bundo");
         if (btnBUndo) btnBUndo.addEventListener("click", () => {
             this.undoBodyNumbering()
-                .catch((e) => showMessage("撤销失败：" + e.message, 8000, "error"));
+                .catch((e) => msg("撤销失败：" + e.message, 8000, "error"));
             dlg.destroy();
         });
         /* 「现在编」两步走：第一次只算并报数，第二次才写库（写前存整批撤销快照）。
@@ -1332,7 +1333,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                     btnBRun.textContent = "正在写…";
                     const r = await this.numberBodyRange(armed.ids, {source: "panel"});
                     btnBRun.textContent = "现在编";
-                    showMessage(r.ok ? ("已给 " + r.docsHit + " 篇、共 " + r.changed + " 处正文标题编号")
+                    msg(r.ok ? ("已给 " + r.docsHit + " 篇、共 " + r.changed + " 处正文标题编号")
                                      : ("批量编号中断，已改 " + r.changed + " 处，可点「撤销上次正文编号」回退"),
                                 r.ok ? 6000 : 9000, r.ok ? "info" : "error");
                     this.refreshTopBar();
@@ -1340,20 +1341,20 @@ module.exports = class DocNumberPlugin extends Plugin {
                 }
                 const ids = await this.rangeDocIds();
                 if (!ids.length) {
-                    showMessage("还没有设置自动编号范围，先在上面「自动编号范围」里添加文档或笔记本", 7000, "info");
+                    msg("还没有设置自动编号范围，先在上面「自动编号范围」里添加文档或笔记本", 7000, "info");
                     return;
                 }
                 const pre = await this.numberBodyRange(ids, {dryRun: true});
                 if (!pre.total) {
-                    showMessage("范围内 " + ids.length + " 篇的正文编号已是最新，无需改动", 6000, "info");
+                    msg("范围内 " + ids.length + " 篇的正文编号已是最新，无需改动", 6000, "info");
                     return;
                 }
                 this._bodyRunArmed = {ids: ids, ts: Date.now()};
                 btnBRun.textContent = "确认写入 " + pre.total + " 处";
-                showMessage("预检：" + pre.docsHit + " 篇、共 " + pre.total
+                msg("预检：" + pre.docsHit + " 篇、共 " + pre.total
                             + " 处标题要改。确认无误再点一次按钮写入（可整批撤销）", 10000, "info");
             } catch (e) {
-                showMessage("正文批量编号失败：" + e.message, 9000, "error");
+                msg("正文批量编号失败：" + e.message, 9000, "error");
                 btnBRun.textContent = "现在编";
             } finally {
                 btnBRun.disabled = false;
@@ -1552,7 +1553,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                 return result;
             }
             if (!plan.length) {
-                if (!o.silent) showMessage("「" + info.content + "」下的子文档编号已是最新的，无需改动", 6000, "info");
+                if (!o.silent) msg("「" + info.content + "」下的子文档编号已是最新的，无需改动", 6000, "info");
                 result.verified = true;
                 return result;
             }
@@ -1613,12 +1614,12 @@ module.exports = class DocNumberPlugin extends Plugin {
 
             if (!o.silent) {
                 if (result.failed.length) {
-                    showMessage("编号中断：已改 " + result.changed + " 篇，失败 1 篇（" + result.failed[0].error
+                    msg("编号中断：已改 " + result.changed + " 篇，失败 1 篇（" + result.failed[0].error
                         + "）。右键「撤销上次子文档编号」可回退", 10000, "error");
                 } else if (!result.verified) {
-                    showMessage("已提交 " + result.changed + " 处改名，但回读校验超时，请刷新文档树确认", 9000, "error");
+                    msg("已提交 " + result.changed + " 处改名，但回读校验超时，请刷新文档树确认", 9000, "error");
                 } else {
-                    showMessage("已给「" + info.content + "」下 " + result.changed
+                    msg("已给「" + info.content + "」下 " + result.changed
                         + " 篇子文档编号；右键「撤销上次子文档编号」可回退", 8000, "info");
                 }
             }
@@ -1661,14 +1662,14 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (!o.silent) {
             if (failed.length) {
                 const f = failed[0];
-                showMessage("重排中断：" + (f.error || (f.failed[0] || {}).error || "未知错误")
+                msg("重排中断：" + (f.error || (f.failed[0] || {}).error || "未知错误")
                             + "。右键「撤销上次子文档编号」可回退", 10000, "error");
             } else {
                 const bt = body
                     ? (body.ok ? "；正文 " + (body.docsHit || 0) + " 篇、" + (body.changed || 0) + " 处"
                                : "；正文失败：" + (body.error || ""))
                     : "；正文编号已关闭，只重排了文档标题";
-                showMessage("文档树已重排 " + out.length + " 个范围、改 " + changed + " 个标题" + bt, 9000, "info");
+                msg("文档树已重排 " + out.length + " 个范围、改 " + changed + " 个标题" + bt, 9000, "info");
             }
         }
         return {tree: out, body: body, meta: meta, changed: changed};
@@ -1678,7 +1679,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         const o = opt || {};
         const raw = await this.loadData(UNDO_FILE);
         if (!raw) {
-            if (!o.silent) showMessage("没有可撤销的上一轮编号", 5000, "info");
+            if (!o.silent) msg("没有可撤销的上一轮编号", 5000, "info");
             return {ok: false, reason: "no-undo"};
         }
         let snap;
@@ -1719,7 +1720,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         }
         this._fp = {};
         if (!o.silent) {
-            showMessage((failed.length
+            msg((failed.length
                 ? ("撤销完成 " + done + " 篇，失败 " + failed.length + " 篇，撤销记录已保留")
                 : ("已撤销上一轮编号，恢复 " + done + " 篇原标题"))
                 + (paused ? "；已暂停自动编号，需要时到顶栏面板重新启用" : ""), 8000,
@@ -1825,12 +1826,12 @@ module.exports = class DocNumberPlugin extends Plugin {
         const lv = Math.max(1, Math.min(BN.LEVEL_MAX, Number(level) || 1));
         const cfg = this._config || DEFAULT_CONFIG;
         if (cfg.bodyEnabled === false) {
-            if (!o.silent) showMessage("正文编号快捷键已在设置里关闭", 6000, "info");
+            if (!o.silent) msg("正文编号快捷键已在设置里关闭", 6000, "info");
             return {ok: false, reason: "disabled"};
         }
         const ctx = o.context || this.currentBodyContext();
         if (!ctx || !ctx.blockId) {
-            if (!o.silent) showMessage("请把光标放到正文段落里再按快捷键", 6000, "info");
+            if (!o.silent) msg("请把光标放到正文段落里再按快捷键", 6000, "info");
             return {ok: false, reason: "no-cursor"};
         }
         const rows = await sql("SELECT root_id FROM blocks WHERE id='" + esc(ctx.blockId) + "' LIMIT 1");
@@ -1838,7 +1839,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         const docId = rows[0].root_id;
         /* 光标落在编辑器根节点上（closest 拿到的是文档 ID）：绝不把 updateBlock 打到文档根 */
         if (ctx.blockId === docId) {
-            if (!o.silent) showMessage("光标不在正文段落里，请点到具体段落再按快捷键", 6000, "info");
+            if (!o.silent) msg("光标不在正文段落里，请点到具体段落再按快捷键", 6000, "info");
             return {ok: false, reason: "doc-root"};
         }
         let docTitle = String(ctx.docTitle || "");
@@ -1855,13 +1856,13 @@ module.exports = class DocNumberPlugin extends Plugin {
         /* 安全闸：当前段落的文字读不上来（瞬时空读 / 未提交），宁可不编号也绝不能拿空串覆盖标题 */
         const focusMd = mdMap.get(ctx.blockId) || "";
         if (!focusMd.trim()) {
-            if (!o.silent) showMessage("读不到当前段落的文字，未做任何改动，请把光标移回正文再试", 7000, "info");
+            if (!o.silent) msg("读不到当前段落的文字，未做任何改动，请把光标移回正文再试", 7000, "info");
             return {ok: false, reason: "empty-read", docId: docId, docTitle: docTitle};
         }
         /* 其它标题块读不到同样整篇跳过：否则它们不占号，后面标题会整体前移，下一轮又改回来 */
         const unread2 = ordered.filter((b) => mdMap.get(b.id) === null);
         if (unread2.length) {
-            if (!o.silent) showMessage("有 " + unread2.length + " 个标题块暂时读不到内容，"
+            if (!o.silent) msg("有 " + unread2.length + " 个标题块暂时读不到内容，"
                 + "为避免编号错乱，本次未做改动，请稍后再试", 8000, "info");
             return {ok: false, reason: "read-failed", docId: docId, unread: unread2.length};
         }
@@ -1884,11 +1885,11 @@ module.exports = class DocNumberPlugin extends Plugin {
                                     formats: bodyFmt, stripFormats: stripFmts,
                                     normalizeDepth: true});
         if (r.reason === "no-prefix") {
-            if (!o.silent) showMessage("当前文档标题里没有节编号或章编号，已跳过正文编号", 7000, "info");
+            if (!o.silent) msg("当前文档标题里没有节编号或章编号，已跳过正文编号", 7000, "info");
             return {ok: false, reason: "no-prefix", docId: docId, docTitle: docTitle};
         }
         if (!r.plan.length) {
-            if (!o.silent) showMessage("正文标题编号已是最新，无需改动", 6000, "info");
+            if (!o.silent) msg("正文标题编号已是最新，无需改动", 6000, "info");
             return {ok: true, changed: 0, prefix: r.prefix, docId: docId, plan: []};
         }
 
@@ -1910,9 +1911,9 @@ module.exports = class DocNumberPlugin extends Plugin {
         }
         if (!o.silent) {
             if (failed.length) {
-                showMessage("正文编号中断：已改 " + changed + " 处，可用「撤销上次正文编号」回退", 9000, "error");
+                msg("正文编号中断：已改 " + changed + " 处，可用「撤销上次正文编号」回退", 9000, "error");
             } else {
-                showMessage("已把当前段落设为 " + lv + " 级标题，并重排 " + changed + " 处正文编号", 7000, "info");
+                msg("已把当前段落设为 " + lv + " 级标题，并重排 " + changed + " 处正文编号", 7000, "info");
             }
         }
         return {ok: !failed.length, changed: changed, prefix: r.prefix, prefixKind: r.prefixKind,
@@ -1962,7 +1963,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         const r = await this.numberBodyRange(ids, {source: o.source || "format-switch",
                                                    silent: true});
         if (!o.silent) {
-            showMessage(r.ok
+            msg(r.ok
                 ? ("正文模板已切换：已按新模板重排 " + (r.docsHit || 0) + " 篇 / "
                    + (r.changed || 0) + " 处（老编号已剔除）")
                 : ("正文重排中断：已改 " + (r.changed || 0) + " 处，可在面板撤销"),
@@ -1975,7 +1976,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         const o = opt || {};
         const raw = await this.loadData(BODY_UNDO_FILE);
         if (!raw) {
-            if (!o.silent) showMessage("没有可撤销的上一轮正文编号", 5000, "info");
+            if (!o.silent) msg("没有可撤销的上一轮正文编号", 5000, "info");
             return {ok: false, reason: "no-undo"};
         }
         let snap;
@@ -2023,7 +2024,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         }
         if (!o.silent) {
             const who = snap && snap.docTitle ? ("《" + snap.docTitle + "》") : "";
-            showMessage(failed.length
+            msg(failed.length
                 ? ("正文撤销完成 " + done + " 处，失败 " + failed.length + " 处，记录已保留")
                 : ("已撤销" + who + "的上一轮正文编号，恢复 " + done + " 处原标题"
                    + (skippedEmpty ? ("（跳过 " + skippedEmpty + " 处原文为空的记录）") : "")
@@ -2157,7 +2158,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                             const last = this._bodyTripToast[docId] || 0;
                             if (Date.now() - last > 10 * 60 * 1000) {
                                 this._bodyTripToast[docId] = Date.now();
-                                showMessage("《" + (r.docTitle || docId) + "》的正文编号连续 3 轮都算出不同结果，"
+                                msg("《" + (r.docTitle || docId) + "》的正文编号连续 3 轮都算出不同结果，"
                                     + "已暂停这篇的自动编号（其它文档不受影响）。多为标题只剩编号没有文字、"
                                     + "或模板里含格式导致号形不稳定；处理好后到面板把「内容标题变化后自动重算」"
                                     + "关一次再开即可恢复", 12000, "error");
@@ -2516,9 +2517,9 @@ module.exports = class DocNumberPlugin extends Plugin {
                                        : "；内容失败：" + (body.error || ""))
                             : "；内容标题未启用";
             if (r.failed && r.failed.length) {
-                showMessage("编号中断：" + (r.failed[0] || {}).error, 9000, "error");
+                msg("编号中断：" + (r.failed[0] || {}).error, 9000, "error");
             } else {
-                showMessage("文档标题改 " + (r.changed || 0) + " 篇" + bt, 8000, "info");
+                msg("文档标题改 " + (r.changed || 0) + " 篇" + bt, 8000, "info");
             }
         }
         return {tree: r, body: body};
@@ -2644,7 +2645,7 @@ module.exports = class DocNumberPlugin extends Plugin {
             }
         }
         if (!o.silent && failed.length) {
-            showMessage("正文自动编号中断：已改 " + changed + " 处，可用「撤销上次正文编号」回退", 9000, "error");
+            msg("正文自动编号中断：已改 " + changed + " 处，可用「撤销上次正文编号」回退", 9000, "error");
         }
         return {ok: !failed.length, changed: changed, docId: docId, docTitle: docTitle,
                 plan: g.plan, failed: failed};
@@ -2690,8 +2691,8 @@ module.exports = class DocNumberPlugin extends Plugin {
             }
         }
         if (!o.silent) {
-            if (failed.length) showMessage("正文批量编号中断：已改 " + changed + " 处，可用「撤销上次正文编号」整批回退", 9000, "error");
-            else showMessage("已给 " + hit + " 篇、共 " + changed + " 处正文标题编号", 7000, "info");
+            if (failed.length) msg("正文批量编号中断：已改 " + changed + " 处，可用「撤销上次正文编号」整批回退", 9000, "error");
+            else msg("已给 " + hit + " 篇、共 " + changed + " 处正文标题编号", 7000, "info");
         }
         return {ok: !failed.length, docs: docs, total: changes.length, changed: changed,
                 docsHit: hit, failed: failed};
@@ -2710,7 +2711,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         ev.preventDefault();
         ev.stopPropagation();
         this.numberBodyAtCursor(Number(m[1])).catch((e) =>
-            showMessage("正文编号失败：" + e.message, 8000, "error"));
+            msg("正文编号失败：" + e.message, 8000, "error"));
     }
 
     /* ---------------- 自动触发 ---------------- */
@@ -2801,7 +2802,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                         cfg.enabled = false;
                         await this.saveConfig();
                         this.refreshTopBar();
-                        showMessage("检测到编号在两套格式间反复切换（编号范围可能重叠），已暂停自动编号。"
+                        msg("检测到编号在两套格式间反复切换（编号范围可能重叠），已暂停自动编号。"
                             + "请到顶栏面板检查范围设置后再启用", 12000, "error");
                         details.push({key, reason: "oscillation-paused"});
                         break;

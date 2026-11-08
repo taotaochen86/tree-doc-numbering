@@ -4,7 +4,7 @@
 
 用法：python build.py [--no-zip]
 产出：index.js、build-info.json（源码/产物 md5，供 test/check_deploy.py 核对）、
-      package.zip（根层五文件：plugin.json / index.js / README.md / README_en.md / icon.png）
+      package.zip（根层 5 文件 + i18n/ 两份语言文件）
 改代码后必须重跑本脚本；index.js 与 package.zip 都是生成物，不要手改。
 """
 import os
@@ -33,6 +33,7 @@ def main():
     numbering = read(os.path.join(SRC, "numbering.js"))
     body = read(os.path.join(SRC, "body_numbering.js"))
     plugin = read(os.path.join(SRC, "plugin.js"))
+    ui = read(os.path.join(SRC, "i18n_ui.js"))
     pj = json.loads(read(os.path.join(ROOT, "plugin.json")))
     readme = read(os.path.join(ROOT, "README.md"))
 
@@ -53,7 +54,7 @@ def main():
         " * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin\n"
         " */\n\n" % version
     )
-    out = header + numbering.rstrip() + "\n\n" + body.rstrip() + "\n\n" + plugin.lstrip()
+    out = header + numbering.rstrip() + "\n\n" + body.rstrip() + "\n\n" + ui.rstrip() + "\n\n" + plugin.lstrip()
 
     # 语法自检（Node 在才跑；不装 Node 也不阻断生成）
     tmp = os.path.join(ROOT, ".build-syntax.js")
@@ -79,7 +80,7 @@ def main():
     zpath = os.path.join(ROOT, "package.zip")
     zmd5, zsize = None, None
     if "--no-zip" not in sys.argv:
-        names = ["plugin.json", "index.js", "README.md", "README_en.md", "icon.png"]
+        names = ["plugin.json", "index.js", "README.md", "README_en.md", "icon.png", "i18n/zh_CN.json", "i18n/en_US.json"]
         with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
             for n in names:
                 z.write(os.path.join(ROOT, n), n)
