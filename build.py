@@ -4,7 +4,7 @@
 
 用法：python build.py [--no-zip]
 产出：index.js、build-info.json（源码/产物 md5，供 test/check_deploy.py 核对）、
-      package.zip（根层四文件：plugin.json / index.js / README.md / icon.png）
+      package.zip（根层五文件：plugin.json / index.js / README.md / README_en.md / icon.png）
 改代码后必须重跑本脚本；index.js 与 package.zip 都是生成物，不要手改。
 """
 import os
@@ -79,7 +79,7 @@ def main():
     zpath = os.path.join(ROOT, "package.zip")
     zmd5, zsize = None, None
     if "--no-zip" not in sys.argv:
-        names = ["plugin.json", "index.js", "README.md", "icon.png"]
+        names = ["plugin.json", "index.js", "README.md", "README_en.md", "icon.png"]
         with zipfile.ZipFile(zpath, "w", zipfile.ZIP_DEFLATED) as z:
             for n in names:
                 z.write(os.path.join(ROOT, n), n)

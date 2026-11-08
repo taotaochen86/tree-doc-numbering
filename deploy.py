@@ -18,7 +18,7 @@ sys.path.insert(0, os.path.join(os.path.dirname(os.path.abspath(__file__)), "tes
 from live_lib import ROOT, PLUGIN_DIR, api, bridge_ready, bridge_eval  # noqa: E402
 
 sys.stdout.reconfigure(encoding="utf-8")
-FILES = ["plugin.json", "index.js", "README.md", "icon.png"]
+FILES = ["plugin.json", "index.js", "README.md", "README_en.md", "icon.png"]
 NAME = "tree-doc-numbering"
 
 

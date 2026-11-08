@@ -332,6 +332,10 @@ python deploy.py --check            # 核对源码与线上部署副本 4 文件
 
 ## 版本史
 
+### v0.9.3（2026-11-08）
+
+新增**英文全文对照 README**（`README_en.md`，11 节 + 版本史表）；`plugin.json` 的 `readme` 改为按界面语言分流（`default` → `README_en.md`、`zh_CN` → `README.md`）；`build.py` 打包清单与 `deploy.py` 部署清单同步加入 `README_en.md`，`package.zip` 根层由 4 文件变 5 文件。功能与编号逻辑未改。
+
 ### v0.9.2（2026-11-08）
 
 **v0.9.2（2026-11-08）**：插件整体改名 —— 中文「**树文联动编号**」、英文「**tree-doc numbering**」，技术包名由 `siyuan-plugin-doc-num` 改为 `tree-doc-numbering`（B1 方案）。`name` 变了，思源会视为新插件：旧的 `data/storage/petal/siyuan-plugin-doc-num/` 配置已完整迁移到 `data/storage/petal/tree-doc-numbering/`，旧插件已禁用，避免双实例重复重排。集市发布需按新包名重新提 PR（本轮未做）。下方历史段落里的旧名是当时的记录，**保留不改**。

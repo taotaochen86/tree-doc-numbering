@@ -1,7 +1,7 @@
 {
   "name": "tree-doc-numbering",
   "author": "ttChen",
-  "version": "0.9.2",
+  "version": "0.9.3",
   "minAppVersion": "3.8.9",
   "backends": [
     "windows",
@@ -21,7 +21,7 @@
     "zh_CN": "给文档树的子文档标题和文档内标题块一套联动编号。右键设好范围，新建、删除、拖动、改名后自动重排；五级内置体系可自定义模板与计数方式，支持排除、撤销和正文标题编号。只改标题，文档 ID、正文与反链不动。"
   },
   "readme": {
-    "default": "README.md",
+    "default": "README_en.md",
     "zh_CN": "README.md"
   },
   "keywords": [

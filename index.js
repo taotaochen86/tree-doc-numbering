@@ -1,4 +1,4 @@
-/* 子文档自动编号 v0.9.2 · 本文件由 build.py 生成，请勿手改
+/* 子文档自动编号 v0.9.3 · 本文件由 build.py 生成，请勿手改
  * 源码：src/numbering.js（编号核心）+ src/plugin.js（插件主体）
  * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin
  */
@@ -1295,7 +1295,7 @@ const DN = globalThis.DocNumbering;
 const BN = globalThis.BodyNumbering;
 
 /* 版本号唯一来源：build.py 会拿它和 plugin.json 的 version 比对，不一致直接报错。 */
-const PLUGIN_VERSION = "0.9.2";
+const PLUGIN_VERSION = "0.9.3";
 
 const UNDO_FILE = "undo-last.json";
 const BODY_UNDO_FILE = "body-undo-last.json";
