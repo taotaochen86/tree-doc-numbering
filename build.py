@@ -67,7 +67,7 @@ def main():
     out = _m.apply_fusion(
         out,
         read(os.path.join(ROOT, "fusion", "fusion-core.js")),
-        read(os.path.join(ROOT, "fusion", "fusion-methods.js")))
+        read(os.path.join(ROOT, "fusion", "fusion-methods.js")), version)
 
     # 语法自检（Node 在才跑；不装 Node 也不阻断生成）
     tmp = os.path.join(ROOT, ".build-syntax.js")

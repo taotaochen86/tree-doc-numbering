@@ -1,11 +1,11 @@
 {
-  "generated": "2026-11-10 12:21:25",
+  "generated": "2026-11-10 12:30:28",
   "version": "1.1.1",
   "syntax": "node --check OK",
   "src/numbering.js": "240838dd6a40be6b7e1da69fb443c505",
   "src/body_numbering.js": "96fd0554331420b734664876665c74b5",
   "src/plugin.js": "143b0f3b1a11bc820045ce3cdfb55409",
-  "index.js": "d8b504cf5a341b9fee654f11cc68a5a1",
-  "package.zip": "6d63fd81cab5077306125fe4525e871f",
+  "index.js": "5eeb49648082a7ca45ac993dfbea4202",
+  "package.zip": "d2ffe3f5383ac2549ef34b781b33a5d8",
   "package.zip_size": 127760
 }

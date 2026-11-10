@@ -218,3 +218,13 @@ pos = s.rstrip().rfind("};")
 assert pos > 0, "C 找不到类结束"
 s = s[:pos] + methods.rstrip() + "\n" + s[pos:]
 print("C 插件方法: OK")
+
+# G：把基线里的 PLUGIN_VERSION 常量对齐 plugin.json（否则插件内部仍报 0.9.4）
+import re as _re
+_m = _re.search(r'const PLUGIN_VERSION = "([^"]+)"', s)
+assert _m, "找不到 PLUGIN_VERSION"
+_vold = _m.group(1)
+_old = 'const PLUGIN_VERSION = "%s";' % _vold
+assert s.count(_old) == 1, "G 锚点匹配 %d 次" % s.count(_old)
+s = s.replace(_old, 'const PLUGIN_VERSION = "%s";' % version, 1)
+print("G 版本常量:", _vold, "->", version)
