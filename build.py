@@ -50,11 +50,24 @@ def main():
 
     header = (
         "/* 子文档自动编号 v%s · 本文件由 build.py 生成，请勿手改\n"
-        " * 源码：src/numbering.js（编号核心）+ src/plugin.js（插件主体）\n"
+        " * 源码：src/numbering.js + src/body_numbering.js + src/plugin.js + fusion/（拆合与隔离层）\n"
         " * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin\n"
         " */\n\n" % version
     )
-    out = header + numbering.rstrip() + "\n\n" + body.rstrip() + "\n\n" + ui.rstrip() + "\n\n" + plugin.lstrip()
+    # src/ 是 v0.9.4 快照，与 v0.9.5 基线已不同步；发布以 fusion/ 基线为准。
+    out = read(os.path.join(ROOT, "fusion", "baseline-index.v0.9.5.js"))
+
+    # v1.1.1 融合层：以基线为输入应用可复现补丁，生成最终 index.js。
+    # 改功能请改 fusion/（core / methods / apply.py），不要手改生成物。
+    import importlib.util
+    _spec = importlib.util.spec_from_file_location(
+        "fusion_apply", os.path.join(ROOT, "fusion", "apply.py"))
+    _m = importlib.util.module_from_spec(_spec)
+    _spec.loader.exec_module(_m)
+    out = _m.apply_fusion(
+        out,
+        read(os.path.join(ROOT, "fusion", "fusion-core.js")),
+        read(os.path.join(ROOT, "fusion", "fusion-methods.js")))
 
     # 语法自检（Node 在才跑；不装 Node 也不阻断生成）
     tmp = os.path.join(ROOT, ".build-syntax.js")

@@ -6,7 +6,7 @@
 
 ## 1 In One Sentence
 
-A linked numbering scheme for child-document titles in the SiYuan document tree **and** for heading blocks inside those documents. Set a scope once; creating, deleting, dragging or renaming documents renumbers everything automatically. Only titles change — document IDs, body blocks and backlinks stay untouched.
+A linked numbering scheme for child-document titles in the SiYuan document tree **and** for heading blocks inside those documents. Set a scope once; creating, deleting, dragging or renaming documents renumbers everything automatically. Only titles change — document IDs, body blocks and backlinks stay untouched. Since v1.1.1 document merge and split is built in, sharing the same numbering configuration.
 
 ## 2 What It Does
 
@@ -22,6 +22,11 @@ A linked numbering scheme for child-document titles in the SiYuan document tree 
 | 2.8 Two undo chains | "Undo last numbering" restores document titles, "Undo last body numbering" restores body headings; auto-numbering pauses after an undo |
 | 2.9 Titles only | Document ID, ID path, body block IDs, child/grandchild IDs and backlinks are unchanged |
 | 2.10 Metadata for other plugins | `custom-doc-num` / `custom-doc-num-pad` / `custom-doc-num-meta` are written as document attributes; the cross-reference plugin (`siyuan-xref`) uses them to compute scope levels |
+
+| 2.12 Document Merge & Split | A second submenu with split-to-children / split-to-siblings / merge-children / merge-into-one, sharing the same numbering configuration |
+| 2.13 Number vs. Text Isolation | Plugin numbers live in a heading block attribute and are removed precisely; years, version numbers and amounts at the start of your heading are never mistaken for old numbers |
+| 2.14 Event Scope Isolation | Tree-numbering events never trigger body-heading numbering; body numbering only affects the current document |
+| 2.15 Batch Writes | Read block order, then one batch block update and one batch attribute write instead of per-block requests |
 
 ### 2.11 Built-in Five-Level Scheme and Counter Modes
 
@@ -269,6 +274,23 @@ Tested on SiYuan 3.8.9: renaming uses `/api/filetree/renameDocByID`. **Document 
 
 SiYuan's `Ctrl+Z` **cannot undo API writes** (its undo stack only records editor-initiated operations). Before renaming, the plugin stores each document's old title in its own data file; "Undo last child-document numbering" restores them one by one. A successful undo clears the record and **pauses automatic numbering** (see 7.2).
 
+### 7.12 Document Merge and Split (since v1.1.1)
+
+Right-click **a concrete document** in the tree and open the **Document Merge & Split** submenu. Existing numbering entries live in the **Tree-Doc Numbering** submenu; the two never mix.
+
+| Entry | Behaviour |
+|---|---|
+| Split into Child Documents | Split on the highest heading level present; each heading becomes the child document title and is removed from the body, remaining headings are promoted one level, the source keeps only the text before the first heading. No headings → no split |
+| Split into Sibling Documents | Same, but as sibling documents; if the emptied source has no preamble it is deleted |
+| Merge Child Documents Here | Append children to the end of the parent: document titles become level-1 headings, child headings are demoted one level, children are then deleted |
+| Merge into One Document | Select several documents → create a sibling named 合并文档 (auto-suffixed if taken); titles become level-1 headings, contents demoted, sources deleted |
+
+Each pair is the inverse of the other, so repeated split/merge keeps levels, section count and content stable. **All existing numbers are stripped first using this plugin's own formats**, and afterwards **only the documents involved get their body headings renumbered** — no whole-library pass, no unrelated documents touched.
+
+Numbers are isolated from your text with the `custom-body-num` block attribute: the pure number is stored on the heading block (attributes never enter Markdown or exports), and stripping removes exactly that recorded prefix instead of guessing with regexes. Headings such as `2026-11-10 Meeting`, `3.2 Release Notes`, `100 CNY Budget` or `2024-08-09 Field Work` therefore keep their leading numbers. For legacy documents without a marker only unambiguous forms (Chinese numerals / 第N章 / 【N】) are stripped.
+
+Writes are batched: `getDocBlocksOrders` → one `batchUpdateBlock` → one `batchSetBlockAttrs`.
+
 ## 8 Limitations
 
 - Defaults to **5 levels**, adjustable to **1–5**; **level 6 and deeper are never numbered** (`MAX_LEVEL = 5` is hard-coded). With the default 5, the fourth and fifth layers also get numbers — set the level count back to 3 if you dislike that.
@@ -305,6 +327,8 @@ SiYuan's `Ctrl+Z` **cannot undo API writes** (its undo stack only records editor
 
 ---
 
+**Fusion layer and number isolation (v1.1.1)**: `build.py` starts from `fusion/baseline-index.v0.9.5.js` and `fusion/apply.py` applies reproducible patches (pure-function layer, plugin methods, date guard, `preStripped` short-circuit, batch writes, scope-isolation gates and the two-level menu wrapper). `index.js` and `package.zip` therefore stay generated artifacts — edit `fusion/`. The bundled `src/` is a v0.9.4 snapshot and is not fully in sync with the v0.9.5 baseline; releases are built from the baseline. When a heading carries `custom-body-num`, the fusion layer strips exactly that prefix and sets `preStripped=true` so `buildBodyPlan` skips all of its regexes; without a marker only unambiguous number forms are stripped. All writes go through `msBatchWrite()`: block order → `batchUpdateBlock` → `batchSetBlockAttrs`, with a per-block fallback only if the batch API fails.
+
 ## 10 Build and Release (Developers)
 
 ```bash
@@ -333,6 +357,7 @@ Condensed in English; the full Chinese changelog is in `README.md`.
 
 | Version | Date | Main change |
 |---|---|---|
+| 1.1.1 | 2026-11-10 | Merged the document merge/split plugin behind two submenus; block-attribute number isolation, date/version-number protection, batched writes, event-scope isolation; reproducible `fusion/` build layer |
 | 0.9.4 | 2026-11-08 | Full bilingual UI: settings panel, context menus, toasts and command names follow `window.siyuan.config.lang`; official `i18n/` files bundled |
 | 0.9.3 | 2026-11-08 | Added full English README, made `readme` language-aware, added `README_en.md` to build/deploy/package manifests |
 | 0.9.2 | 2026-11-08 | Renamed to 树文联动编号 / tree-doc numbering, package name → `tree-doc-numbering`; config migration and old plugin disabled |
