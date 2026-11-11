@@ -34,6 +34,8 @@ def main():
     body = read(os.path.join(SRC, "body_numbering.js"))
     plugin = read(os.path.join(SRC, "plugin.js"))
     ui = read(os.path.join(SRC, "i18n_ui.js"))
+    tree_prefix = read(os.path.join(ROOT, "fusion", "tree-prefix.js"))
+    attrs = read(os.path.join(ROOT, "fusion", "attrs.js"))
     pj = json.loads(read(os.path.join(ROOT, "plugin.json")))
     readme = read(os.path.join(ROOT, "README.md"))
 
@@ -48,14 +50,14 @@ def main():
         raise RuntimeError("版本不一致：plugin.json=%s / src/plugin.js PLUGIN_VERSION=%s"
                            % (version, mver.group(1)))
 
-    header = (
-        "/* 子文档自动编号 v%s · 本文件由 build.py 生成，请勿手改\n"
-        " * 源码：src/numbering.js + src/body_numbering.js + src/plugin.js + fusion/（拆合与隔离层）\n"
-        " * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin\n"
-        " */\n\n" % version
-    )
     # src/ 是 v0.9.4 快照，与 v0.9.5 基线已不同步；发布以 fusion/ 基线为准。
     out = read(os.path.join(ROOT, "fusion", "baseline-index.v0.9.5.js"))
+    # 基线头部带着旧版本号（v0.9.4），会误导排查；把版本与源码说明对齐当前版本。
+    out = re.sub(r"^/\* 子文档自动编号 v[\d.]+", "/* 子文档自动编号 v" + version,
+                 out, count=1)
+    out = re.sub(r"^ \* 源码：[^\n]*",
+                 " * 源码：fusion/ 基线 + 融合补丁（详见 fusion/README.md）",
+                 out, count=1, flags=re.M)
 
     # v1.1.1 融合层：以基线为输入应用可复现补丁，生成最终 index.js。
     # 改功能请改 fusion/（core / methods / apply.py），不要手改生成物。
@@ -64,9 +66,11 @@ def main():
         "fusion_apply", os.path.join(ROOT, "fusion", "apply.py"))
     _m = importlib.util.module_from_spec(_spec)
     _spec.loader.exec_module(_m)
+    # v1.1.2 B 方案：tree-prefix.js 是纯函数层，拼在融合 core 前一起注入 class 之前。
     out = _m.apply_fusion(
         out,
-        read(os.path.join(ROOT, "fusion", "fusion-core.js")),
+        attrs.rstrip() + "\n\n" + tree_prefix.rstrip() + "\n\n"
+        + read(os.path.join(ROOT, "fusion", "fusion-core.js")),
         read(os.path.join(ROOT, "fusion", "fusion-methods.js")), version)
 
     # 语法自检（Node 在才跑；不装 Node 也不阻断生成）

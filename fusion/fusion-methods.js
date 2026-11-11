@@ -238,9 +238,14 @@
         // 先短路返回。BN.stripNumber 内部已有同一份日期保护（见 build_fusion.py 的 D 步）。
         const isDate = (typeof globalThis !== "undefined" && globalThis.__msIsDateHead) || null;
         if (isDate && isDate(out)) return out;
+        // v1.1.2 B 方案：学号 / 年份 / 日期 / 纯数字开头的文档名也是正文，不参与剥号。
+        const TP = (typeof globalThis !== "undefined" && globalThis.MSTreePrefix) || null;
+        if (TP && TP.isProtected(out)) return out;
+        const before = out;
         try { out = DN.stripByFormats(out, list); } catch (e) {}
         try { out = BN.stripNumber(out, BN.bodyStripRegexes(bodyStripList(cfg))); } catch (e) {}
-        return out;
+        // 剥成空串（「第4篇」）→ 回退原文，否则这类文档永远不参与编号。
+        return String(out).trim() ? out : before;
     }
     /** 导出 = front matter + 自动插入的「# 文档标题」+ 正文，按文档名核对后剥掉那一行。 */
     async msStripMdSafe(id, docTitle) {

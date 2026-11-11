@@ -4,6 +4,8 @@
  * 内置编号模板、示例中文、控制台日志不走这里。
  */
 const UI_EN = {
+    "七级 →": "Level 7 →",
+    "六级 →": "Level 6 →",
     "五级 →": "Level 5 →",
     "换格式 / 减少层级会自动剥掉旧编号再套新格式。「第1章」与新内置模板同形，会被当作插件编号剥掉（中文数字「第一章」保留）。排除「仅自身」时子文档照常编号，「整支」则连子文档都不编号。撤销后自动编号会暂停，到此处重新开启。": "Switching formats or reducing levels strips old numbers before applying the new format. A hand-written 「第1章」 looks like the built-in template and is stripped (Chinese numerals such as 「第一章」 are safe). Excluding \"Itself only\" still numbers child documents; \"Whole branch\" excludes them too. Automatic numbering pauses after an undo — re-enable it here.",
     "把范围内每篇的内容标题按当前模板编一遍；可整批撤销": "Number body headings in every scoped document with the current template; one batch undo",
@@ -17,6 +19,8 @@ const UI_EN = {
     "2级 →": "Level 2 →",
     "3级 →": "Level 3 →",
     "4级 →": "Level 4 →",
+    "7级 →": "Level 7 →",
+    "6级 →": "Level 6 →",
     "5级 →": "Level 5 →",
     "新增 / 删除 / 拖动 / 改名后约 ": "Recalculates about ",
     " 秒自动重排 · 只改标题，不动正文与 ID": " s after create / delete / drag / rename · titles only, body and IDs untouched",
@@ -132,7 +136,7 @@ const UI_EN = {
     "自动编号范围": "Auto-numbering scopes",
     "，编号已重排": ", numbering refreshed",
     "已取消排除「": "Un-excluded “",
-    "级（1–5）": " levels (1–5)",
+    "级（1–7）": " levels (1–7)",
     "恢复内置默认": "Restore built-in defaults",
     "撤销上次编号": "Undo last numbering",
     "立即全部重排": "Renumber all now",

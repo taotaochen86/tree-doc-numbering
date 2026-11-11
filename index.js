@@ -1,5 +1,5 @@
-/* 子文档自动编号 v0.9.4 · 本文件由 build.py 生成，请勿手改
- * 源码：src/numbering.js（编号核心）+ src/plugin.js（插件主体）
+/* 子文档自动编号 v1.2.1 · 本文件由 build.py 生成，请勿手改
+ * 源码：fusion/ 基线 + 融合补丁（详见 fusion/README.md）
  * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin
  */
 
@@ -26,9 +26,10 @@
     var TITLE_TOKEN = "{title}";
 
     /* 内置默认模板：前三级输出与 v0.2.0 的硬编码逐字一致，升级不会改动用户已有标题。
-     * 4/5 级是 2026-11-07 追加「最多 5 级」时给的可改默认值（名称由模板决定，改模板即可）。
+     * 4/5 级是 2026-11-07 追加「最多 5 级」时给的可改默认值；
+     * 6/7 级是 2026-11-11 把文档树层级上限扩到 7 时补的（默认不启用，点 + 才有）。
      * 每个自动编号范围可以另存一份 formats；没存的继承全局 defaultFormats。 */
-    var MAX_LEVEL = 5;
+    var MAX_LEVEL = 7;
     var DEFAULT_MAX_LEVEL = 3;
     var DEFAULT_FORMATS = {
         1: "第{nn}部 {title}",
@@ -36,11 +37,13 @@
         3: "第{nn}节 {title}",
         4: "第{nn}条 {title}",
         5: "第{nn}款 {title}",
+        6: "第{nn}项 {title}",
+        7: "第{nn}目 {title}",
     };
     /* global = 整棵树同一层级一个流水号（部、章原口径）；
      * local  = 每进一个父文档从 01 重排（节原口径）。每级都可在面板里改。 */
     var DEFAULT_COUNTERS = {
-        1: "global", 2: "global", 3: "local", 4: "local", 5: "local",
+        1: "global", 2: "global", 3: "local", 4: "local", 5: "local", 6: "local", 7: "local",
     };
 
     /* v0.4.0 用户指定的「用户可见内置默认」，由插件层 DEFAULT_CONFIG 采用。
@@ -54,6 +57,8 @@
         3: "第{n}篇{title}",
         4: "第{n}章 {title}",
         5: "第{parentN}.{n}节 {title}",
+        6: "{prefix}.{n} {title}",
+        7: "{prefix}.{n} {title}",
     };
     /* v0.7.1 之前第 3 级的内置默认是「第{n}部 {title}」。改成「篇」以后，历史上已经编号成
      * 「第3部 …」的标题仍要能被剥掉，否则换默认就留下一层旧前缀 —— 所以它恒定进剥离清单，
@@ -73,7 +78,7 @@
      *            等价于旧口径「不同部里的章号应该连着，不能都从第01章开始」。 */
     var COUNTER_MODES = ["global", "local", "grandlocal"];
     var BUILTIN_V4_COUNTERS = {
-        1: "global", 2: "local", 3: "local", 4: "grandlocal", 5: "local",
+        1: "global", 2: "local", 3: "local", 4: "grandlocal", 5: "local", 6: "local", 7: "local",
     };
     var BUILTIN_V4_MAX_LEVEL = 5;
 
@@ -220,7 +225,7 @@
     /** 把模板的「非 {title} 段」转成正则（带 :格式 时按格式生成字符类）。 */
     function wildcard(seg) {
         var out = "", last = 0, m;
-        var re = /\{(parentNN|parentN|prefix|nn|n|title|fn[1-5]|hn[1-5]|fn|hn)(?::([^}]*))?\}/g;
+        var re = /\{(parentNN|parentN|prefix|nn|n|title|fn[1-7]|hn[1-5]|fn|hn)(?::([^}]*))?\}/g;
         while ((m = re.exec(seg)) !== null) {
             out += escapeRe(seg.slice(last, m.index));
             var k = m[1], fmt = m[2] || "";
@@ -318,7 +323,7 @@
             }
             return out.join(".");
         }
-        return s.replace(/\{(parentNN|parentN|prefix|nn|n|title|fn[1-5]|hn[1-5]|fn|hn)(?::([^}]*))?\}/g,
+        return s.replace(/\{(parentNN|parentN|prefix|nn|n|title|fn[1-7]|hn[1-5]|fn|hn)(?::([^}]*))?\}/g,
             function (m, k, fmt) {
             var f = fmt || "";
             if (k === "title") return String(base == null ? "" : base);
@@ -543,16 +548,22 @@
         var skipSubtreeIds = new Set(o.skipSubtreeIds || []); // 排除整支，整支原样不编号
         var activeFormats = normalizeFormats(o.formats);   // 当前模板本身也要进剥离清单
         var counters = normalizeCounters(o.counters);       // 每级 global / local / grandlocal
-        var maxLevel = clampLevel(o.maxLevel || DEFAULT_MAX_LEVEL);  // 1~5 级
+        var maxLevel = clampLevel(o.maxLevel || DEFAULT_MAX_LEVEL);  // 1~7 级
         /* 剥旧前缀时要试的模板：当前 + 调用方给的（上次 / 各范围自己的历史）
          * + **全部历史内置模板**。切换编号方案时，老号必须在这之前就被剔干净。 */
         var stripList = [activeFormats].concat(o.stripFormats || []).concat(HISTORY_FORMATS);
-        function stripAny(title) { return stripByFormats(title, stripList); }
+        var ownMap = {};   // v1.1.2 B：id -> {owned, head, tail}，写入时落块属性
+        function stripAny(title, node) {
+            var P = (typeof globalThis !== "undefined" && globalThis.MSTreePrefix) || null;
+            if (!P) return stripByFormats(title, stripList);
+            return P.peel(title, node && node.own,
+                          function (t) { return stripByFormats(t, stripList); }).text;
+        }
 
         /** 剥掉一整支的插件编号前缀（排除整支 / 超出层级数时），不改树结构。
          *  手写「第1章」不匹配内置 \d{2,}，保持原样。 */
         function stripBranch(node, reason, onlySelf) {
-            var base = stripAny(node.title);
+            var base = stripAny(node.title, node);
             if (base !== node.title) {
                 out.push({id: node.id, from: node.title, to: base,
                           level: 0, index: 0, reason: reason});
@@ -567,7 +578,7 @@
         var grand = {};    // grandlocal：level + 祖父节点 id 一个流水号
         /* ancestorId  = node 的父节点 id，也就是 node 的孩子们（level 级）的「上上级」。
          * parentIndex = node 自己的编号，供 {parentN} 渲染（第1.1节里的前一个 1）。
-         * chain       = 从根到当前节点各层的序号（下标 1~5），供 {fn1}~{fn5} 与 {fn} 组合。 */
+         * chain       = 从根到当前节点各层的序号（下标 1~7），供 {fn1}~{fn7} 与 {fn} 组合。 */
         function walk(node, level, ancestorId, parentIndex, chain, parentNum) {
             if (level > maxLevel) {
                 /* 减少层级后：超出的文档恢复原标题。只剥 node 的子孙 ——
@@ -593,7 +604,7 @@
                 }
                 /* v0.8.0：剥号后要去掉首尾空白。标题 `01【 个人简介】` 剥出「 个人简介」（带前导空格），
                  * 套 `{nn}【 {title}】` 模板就多出一个空格 → `01【  个人简介】`（9 篇真机踩到）。 */
-                var base = stripAny(kid.title).trim();
+                var base = stripAny(kid.title, kid).trim();
                 /* 模板自己也用【】包标题（如 `{n:02}【{title}】`）时，标题里若已经带着一对
                  * 完整方括号，会叠成 `01【【陈若涵】】` —— 这里先脱一层。只在模板包标题时做，
                  * 所以 `第{n}章 【审稿意见】` 这种不受影响（模板不包括号，用户括号原样保留）。 */
@@ -623,6 +634,8 @@
                 myChain[level] = idx;
                 var to = makeTitle(level, idx, base, activeFormats,
                                    {parentIndex: parentIndex, fn: myChain, parentNum: parentNum});
+                var P = (typeof globalThis !== "undefined" && globalThis.MSTreePrefix) || null;
+                ownMap[kid.id] = P ? P.ownDecor(to, base) : null;
                 /* v0.8.0：同时算出「这个节点的纯号」（1.3 这种数字链）与补零宽度，
                  * 由插件写进文档属性 custom-doc-num —— 正文编号以后只认属性，不再猜标题形态。 */
                 var fullChain = myChain.slice(1, level + 1).join(".");
@@ -660,6 +673,7 @@
             }
         }
         walk(root, 1, null, null, [], "");
+        out.forEach(function (p) { if (!p.own) p.own = ownMap[p.id] || null; });
         return out;
     }
 
@@ -897,7 +911,7 @@
      * 模板原样渲染（不掐首尾空格）。单遍替换：标题文字里就算含 "{n}" 字样也不会被二次展开。
      * {title} = 剥掉旧号后的原标题（2026-11-07 15:45 用户期望口径，与文档树模板一致）。
      * v0.7.0 新词表（与文档标题模板共用同一套）：
-     *   {fn1}~{fn5} = 本文档在文档树上第 K 级的序号（单个整数，1.1.1.4 → fn4=4）
+     *   {fn1}~{fn7} = 本文档在文档树上第 K 级的序号（单个整数，1.1.1.4 → fn4=4）
      *   {fn}        = 本文档完整号（fn1.fn2…，如 2.1）——等价旧 {prefix}
      *   {hn1}~{hn5} = 本文档内容标题第 K 级的序号（按文档内深度归一，没有 H1 时 H2 就是 hn1）
      *   {hn}        = 内容各级号连起来（1.1…）
@@ -1211,7 +1225,7 @@
             return parts.filter(function (x) { return x !== "" && x != null; }).join(".");
         }
         var h1Num = pureH1(1);
-        /* v0.7.0：文档树各级序号（{fn1}~{fn5}）。优先用插件算好的祖先链；
+        /* v0.7.0：文档树各级序号（{fn1}~{fn7}）。优先用插件算好的祖先链；
          * 没给就从前缀拆（前缀 2.1 → fn1=2, fn2=1），两者都拿不到时留空。 */
         var fnArr = [];
         if (Array.isArray(o.docNums) && o.docNums.length) {
@@ -1298,6 +1312,8 @@
  * 内置编号模板、示例中文、控制台日志不走这里。
  */
 const UI_EN = {
+    "七级 →": "Level 7 →",
+    "六级 →": "Level 6 →",
     "五级 →": "Level 5 →",
     "换格式 / 减少层级会自动剥掉旧编号再套新格式。「第1章」与新内置模板同形，会被当作插件编号剥掉（中文数字「第一章」保留）。排除「仅自身」时子文档照常编号，「整支」则连子文档都不编号。撤销后自动编号会暂停，到此处重新开启。": "Switching formats or reducing levels strips old numbers before applying the new format. A hand-written 「第1章」 looks like the built-in template and is stripped (Chinese numerals such as 「第一章」 are safe). Excluding \"Itself only\" still numbers child documents; \"Whole branch\" excludes them too. Automatic numbering pauses after an undo — re-enable it here.",
     "把范围内每篇的内容标题按当前模板编一遍；可整批撤销": "Number body headings in every scoped document with the current template; one batch undo",
@@ -1311,6 +1327,8 @@ const UI_EN = {
     "2级 →": "Level 2 →",
     "3级 →": "Level 3 →",
     "4级 →": "Level 4 →",
+    "7级 →": "Level 7 →",
+    "6级 →": "Level 6 →",
     "5级 →": "Level 5 →",
     "新增 / 删除 / 拖动 / 改名后约 ": "Recalculates about ",
     " 秒自动重排 · 只改标题，不动正文与 ID": " s after create / delete / drag / rename · titles only, body and IDs untouched",
@@ -1426,7 +1444,7 @@ const UI_EN = {
     "自动编号范围": "Auto-numbering scopes",
     "，编号已重排": ", numbering refreshed",
     "已取消排除「": "Un-excluded “",
-    "级（1–5）": " levels (1–5)",
+    "级（1–7）": " levels (1–7)",
     "恢复内置默认": "Restore built-in defaults",
     "撤销上次编号": "Undo last numbering",
     "立即全部重排": "Renumber all now",
@@ -1567,7 +1585,7 @@ const DN = globalThis.DocNumbering;
 const BN = globalThis.BodyNumbering;
 
 /* 版本号唯一来源：build.py 会拿它和 plugin.json 的 version 比对，不一致直接报错。 */
-const PLUGIN_VERSION = "1.1.1";
+const PLUGIN_VERSION = "1.2.1";
 
 const UNDO_FILE = "undo-last.json";
 const BODY_UNDO_FILE = "body-undo-last.json";
@@ -1949,7 +1967,7 @@ function bodyStripList(cfg, cur) {
 /** 合法占位符白名单：tree / 内容两侧共用（`:格式` 后缀不参与校验）。
  *  v0.8.4：用户把内容 1 级写成 `{fh3}.{fn4}.{n}`（`fh3` 是 `fn3` 的笔误），插件不认这个名字、
  *  原样写进标题 → `1.1 {fh3}..1 {fh3}..1 土壤…`（107 篇 510 条）。现在保存前直接拦下。 */
-const PH_OK = /^(title|prefix|h1|cn|n|nn|parentN|parentNN|fn[1-5]|hn[1-5]|fn|hn)(:[^}]*)?$/;
+const PH_OK = /^(title|prefix|h1|cn|n|nn|parentN|parentNN|fn[1-7]|hn[1-5]|fn|hn)(:[^}]*)?$/;
 
 /** 返回模板里不认识的占位符名字（去重）。空数组 = 全部合法。 */
 function badPlaceholders(formats) {
@@ -1979,6 +1997,193 @@ function pushFormatsHistory(list, formats) {
 function scopeFormats(cfg, scope) {
     return scopeSpec(cfg, scope).formats;
 }
+
+/* v1.2.0：插件状态单属性层（纯函数，生成物 / 单测共用）。
+ *
+ * 起因（2026-11-11 用户报）：文档属性面板里一个文档挂了 5 条自定义属性
+ *   doc-num / doc-num-head / doc-num-meta / doc-num-owned / doc-pad，
+ * 正文标题块另有 body-num。要求「剔除冗余 + 所有属性放进一个 JSON 字符」。
+ *
+ * 做法：**沿用唯一属性名 custom-doc-num-meta**，值永远是一个 JSON 字符串。
+ *   文档块：{"rootID":…, "rootNum":…, "targetId":…, "num":…, "pad":…, "head":…}
+ *   标题块：{"bn":…}                     （bn = 插件写进正文标题的纯编号）
+ * 前 3 个字段是 siyuan-xref 读的章节元数据，属性名与字段名都保持不变，
+ * 因此交叉引用插件零改动、章节前缀层级功能不受影响。
+ *
+ * 剔除的冗余：
+ *   owned —— 恒为 "1"，改由 head 是否存在表示；
+ *   tail  —— 上线至今一条都没写过；
+ *   pad   —— 值为 0 时不写（原来 329 篇里只有 64 篇非 0）。
+ */
+(function (g) {
+    "use strict";
+
+    var ATTR = "custom-doc-num-meta";
+    var META_KEYS = ["rootID", "rootNum", "targetId"];
+    var DOC_KEYS = ["num", "pad", "head"].concat(META_KEYS);
+    /* 损坏 / 外部写入的属性值可能带这些键，直接赋值会改掉对象原型，一律跳过。 */
+    var UNSAFE_KEYS = {"__proto__": 1, "constructor": 1, "prototype": 1};
+
+    /** 解析一个属性值（可传 HTML 实体编码后的 ial 片段，decode 由调用方给）。 */
+    function parse(raw, decode) {
+        var s = String(raw == null ? "" : raw);
+        if (typeof decode === "function") s = decode(s);
+        if (!s.trim()) return null;
+        try {
+            var o = JSON.parse(s);
+            return o && typeof o === "object" && !Array.isArray(o) ? o : null;
+        } catch (e) { return null; }
+    }
+
+    /** 从 blocks.ial 文本里取出唯一属性并解析。 */
+    function fromIal(ial, decode) {
+        var m = new RegExp(ATTR + '="([^"]*)"').exec(String(ial || ""));
+        return m ? parse(m[1], decode) : null;
+    }
+
+    /** 去掉空值，减小属性体积；META_KEYS 即使为空也保留，保证 xref 字段形状稳定。 */
+    function compact(o, keep) {
+        var out = {};
+        var keepMap = {};
+        (keep || META_KEYS).forEach(function (k) { keepMap[k] = 1; });
+        Object.keys(o || {}).forEach(function (k) {
+            if (UNSAFE_KEYS[k]) return;
+            var v = o[k];
+            if (v == null || v === false || (v === "" && !keepMap[k]) || (v === 0 && !keepMap[k])) return;
+            if (k === "owned" || k === "tail") return;   // 冗余字段一律不写
+            out[k] = v;
+        });
+        return out;
+    }
+
+    /** 读-改-写用：把 patch 合并进已有 JSON。 */
+    function merge(existing, patch) {
+        var o = {};
+        Object.keys(existing || {}).forEach(function (k) {
+            if (!UNSAFE_KEYS[k]) o[k] = existing[k];
+        });
+        Object.keys(patch || {}).forEach(function (k) {
+            if (!UNSAFE_KEYS[k]) o[k] = patch[k];
+        });
+        return o;
+    }
+
+    /** 由 collect 读到的 JSON 生成 buildPlan 需要的 {num,pad,meta,own}。 */
+    function toNode(o) {
+        if (!o) return null;
+        /* 纯正文块 {"bn":…} 不是文档编号信息，不该混进 collect 的 numMap。 */
+        var isDoc = DOC_KEYS.some(function (k) {
+            return Object.prototype.hasOwnProperty.call(o, k);
+        });
+        if (!isDoc) return null;
+        return {
+            num: String(o.num == null ? "" : o.num),
+            pad: Number(o.pad) || 0,
+            meta: o,
+            own: o.head ? {owned: "1", head: String(o.head), tail: ""} : null,
+        };
+    }
+
+    var api = {
+        ATTR: ATTR, META_KEYS: META_KEYS,
+        parse: parse, fromIal: fromIal, compact: compact, merge: merge, toNode: toNode,
+    };
+    /* 只挂 globalThis：本文件拼进 index.js 顶层，module.exports 必须留给插件类。 */
+    if (g) g.MSTdnAttrs = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+/* v1.1.2 B 方案：文档树编号「编号文本 / 用户文本」隔离层（纯函数，单测与生成物共用）。
+ *
+ * 起因（2026-11-11 用户报）：文档名「2025200013 王可」被自动重排剥成「王可」，
+ * 「2022200013  韩宏伟」同理；「第4篇」被剥成空串后不再编号。
+ * 根因：树编号剥旧号只靠 stripByFormats 的宽泛正则（历史模板 {n} {title} → ^\d+ ），
+ * 10 位学号被当成旧编号。正文侧 v1.1.1 已有 D 方案（custom-body-num 精确剥离），
+ * 本模块把同一套思路搬到文档树侧。
+ *
+ * 做法：编号写入时给文档打三个属性，记录插件自己写进标题的「头 / 尾」装饰；
+ * 下一轮剥号命中标记就精确切除，完全不跑正则。无标记的历史文档回退原逻辑，
+ * 但先过 isProtected()：学号 / 年份 / 日期 / 纯数字开头一律原样保留。
+ */
+(function (g) {
+    "use strict";
+
+    var ATTR_OWNED = "custom-doc-num-owned";
+    var ATTR_HEAD = "custom-doc-num-head";
+    var ATTR_TAIL = "custom-doc-num-tail";
+
+    /* 行首是「用户正文」而不是「插件编号」的形态：
+     *   - 10 位学号等 ≥5 位连续数字，后跟空白 / 汉字 / 结束（2025200013 王可、2024200018于佳立）
+     *   - 4 位年份，后跟「年」/ 汉字 / -/. + 数字（2023年投稿情况、2026-10-14 …）
+     *   - N月N日
+     *   - 纯数字（222）—— 04j 2026-11-09 同类坑的既定口径
+     * 复合编号 1.2.3.4.5 不匹配（第 5 位后是点号），不会误伤真编号。 */
+    var RE_PROTECTED = /^\s*(?:\d{5,}(?=[\s\u4e00-\u9fff]|$)|\d{4}(?=[\s\u4e00-\u9fff]|[-/.]\s*\d{1,2})|\d{1,2}\s*月\s*\d{1,2}\s*日|\d+\s*$)/;
+
+    function isProtected(title) {
+        return RE_PROTECTED.test(String(title == null ? "" : title));
+    }
+
+    /** 由渲染结果 to 与剥号后的原文 base 算出插件写入的装饰。 */
+    function ownDecor(to, base) {
+        var s = String(to == null ? "" : to);
+        var b = String(base == null ? "" : base);
+        var i = b ? s.indexOf(b) : -1;
+        if (i < 0) return {owned: "1", head: "", tail: ""};
+        return {owned: "1", head: s.slice(0, i), tail: s.slice(i + b.length)};
+    }
+
+    /**
+     * 剥掉文档名里的旧编号。
+     * @param {string} title 当前文档标题
+     * @param {object} own   从块属性读回的 {owned, head, tail}；无标记传 null
+     * @param {function} fallbackStrip 无标记时回退的原剥号函数（接收 title，返回剥后文本）
+     * @returns {{text:string, exact:boolean}} text 为剥号结果；exact=true 表示走了精确路径、调用方不应再跑正则
+     */
+    function peel(title, own, fallbackStrip) {
+        var s = String(title == null ? "" : title);
+        if (!s) return {text: s, exact: true};
+        /* ① 插件自己的编号：按记录的头/尾精确切除，用户文本里的学号、年份、日期一概不碰。 */
+        if (own && own.owned) {
+            var h = String(own.head || "");
+            var t = String(own.tail || "");
+            if (!h || s.indexOf(h) === 0) {
+                var rest = s.slice(h.length);
+                if (t && rest.slice(-t.length) === t) rest = rest.slice(0, rest.length - t.length);
+                return {text: rest, exact: true};
+            }
+            /* 用户手动改过标题、旧头不再匹配：仍不跑宽泛正则，按用户原文处理。 */
+            return {text: s, exact: true};
+        }
+        /* ② 无标记的历史文档：学号 / 年份 / 日期 / 纯数字开头直接放行。 */
+        if (isProtected(s)) return {text: s, exact: true};
+        /* ③ 回退原正则；剥成空串则回退原文（「第4篇」「第5篇」因此能保住标题并正常编号）。 */
+        var out = typeof fallbackStrip === "function" ? fallbackStrip(s) : s;
+        if (!String(out == null ? "" : out).trim()) return {text: s, exact: true};
+        return {text: out, exact: false};
+    }
+
+    /** 从 SQL 读回的 ial 文本里解析三个标记（属性值经思源 HTML 实体编码）。 */
+    function parseOwn(ial, decode) {
+        var s = String(ial || "");
+        function grab(name) {
+            var m = new RegExp(name + '="([^"]*)"').exec(s);
+            if (!m) return "";
+            return typeof decode === "function" ? decode(m[1]) : m[1];
+        }
+        var owned = grab(ATTR_OWNED);
+        if (!owned) return null;
+        return {owned: owned, head: grab(ATTR_HEAD), tail: grab(ATTR_TAIL)};
+    }
+
+    var api = {
+        ATTR_OWNED: ATTR_OWNED, ATTR_HEAD: ATTR_HEAD, ATTR_TAIL: ATTR_TAIL,
+        RE_PROTECTED: RE_PROTECTED,
+        isProtected: isProtected, ownDecor: ownDecor, peel: peel, parseOwn: parseOwn,
+    };
+    /* 注意：本文件会被拼进 index.js 顶层，那里 module.exports 必须留给插件类，
+     * 所以这里**只挂 globalThis**，绝不写 module.exports（单测同样读 globalThis）。 */
+    if (g) g.MSTreePrefix = api;
+})(typeof globalThis !== "undefined" ? globalThis : this);
 
 /* ===== 融合层 A：文档合并与拆分 · 纯函数（插入到 class 定义之前） =====
    2026-11-10 新规格：
@@ -2544,7 +2749,7 @@ module.exports = class DocNumberPlugin extends Plugin {
             const bad = badPlaceholders(DN.normalizeFormats(spec.formats, DN.BUILTIN_V4_FORMATS));
             if (bad.length) {
                 throw new Error("模板里有不认识的占位符：" + bad.join("、")
-                    + "。文档标题可用 {fn1}~{fn5}、{fn}、{n}、{nn}、{parentN}、{parentNN}、{title}、{h1}、{cn}");
+                    + "。文档标题可用 {fn1}~{fn7}、{fn}、{n}、{nn}、{parentN}、{parentNN}、{title}、{h1}、{cn}");
             }
         }
         const isSpec = spec && (spec.formats || spec.counters || spec.maxLevel != null);
@@ -2660,10 +2865,10 @@ module.exports = class DocNumberPlugin extends Plugin {
         const spec0 = scopeSpec(cfg, DEFAULT_SCOPE);
         /* 层级标签保持中性：模板可自定义，写死「部/章/节」会和自定义格式打架。 */
         const levelNames = {
-            1: "一级", 2: "二级", 3: "三级", 4: "四级", 5: "五级",
+            1: "一级", 2: "二级", 3: "三级", 4: "四级", 5: "五级", 6: "六级", 7: "七级",
         };
-        const levelShort = {1: "级", 2: "级", 3: "级", 4: "级", 5: "级"};
-        const docRows = [1, 2, 3, 4, 5].map((lv) =>
+        const levelShort = {1: "级", 2: "级", 3: "级", 4: "级", 5: "级", 6: "级", 7: "级"};
+        const docRows = [1, 2, 3, 4, 5, 6, 7].map((lv) =>
             "<div class='dn-table__row' data-lvrow='" + lv + "'>"
             + "<span class='dn-lv'><span class='dn-lv__num'>" + lv + "</span>" + levelShort[lv] + "</span>"
             + "<input class='b3-text-field' id='dn-f" + lv + "' value='"
@@ -2723,7 +2928,7 @@ module.exports = class DocNumberPlugin extends Plugin {
             + "<button class='dn-step' id='dn-lvminus' aria-label='减少层级'>−</button>"
             + "<b id='dn-maxlevel'>" + spec0.maxLevel + "</b>"
             + "<button class='dn-step' id='dn-lvplus' aria-label='增加层级'>+</button>"
-            + "</div><span class='dn-field__label'>级（1–5）</span></div>"
+            + "</div><span class='dn-field__label'>级（1–7）</span></div>"
             + "</div>"
             + "<div class='dn-table'>"
             + "<div class='dn-table__head'><span>层级</span><span>编号模板</span><span>计数方式</span><span></span></div>"
@@ -2734,7 +2939,7 @@ module.exports = class DocNumberPlugin extends Plugin {
             + "<span class='dn-group__hint'>改文档内的 H1~H5 · 前缀取本档编号</span></div>"
             + bodyRows + "</div>"
             + "<div class='dn-legend'>"
-            + "<span class='dn-tag'><code>{fn1}…{fn5}</code> 文档第 K 级号</span>"
+            + "<span class='dn-tag'><code>{fn1}…{fn7}</code> 文档第 K 级号</span>"
             + "<span class='dn-tag'><code>{fn}</code> 本文档号</span>"
             + "<span class='dn-tag'><code>{hn1}…{hn5}</code> 内容第 K 级号</span>"
             + "<span class='dn-tag'><code>{hn}</code> 内容连号</span>"
@@ -2816,8 +3021,8 @@ module.exports = class DocNumberPlugin extends Plugin {
         trDom(root);
         const q = (s) => root.querySelector(s);
         const selScope = q("#dn-scope");
-        const fInputs = [1, 2, 3, 4, 5].map((lv) => q("#dn-f" + lv));
-        const cSelects = [1, 2, 3, 4, 5].map((lv) => q("#dn-c" + lv));
+        const fInputs = [1, 2, 3, 4, 5, 6, 7].map((lv) => q("#dn-f" + lv));
+        const cSelects = [1, 2, 3, 4, 5, 6, 7].map((lv) => q("#dn-c" + lv));
         const preview = q("#dn-preview");
         const maxEl = q("#dn-maxlevel");
         let curMax = spec0.maxLevel;
@@ -2838,8 +3043,8 @@ module.exports = class DocNumberPlugin extends Plugin {
         const paintPreview = () => {
             if (!preview) return;
             const s = currentSpec();
-            const samples = ["绪论", "研究背景", "国内外现状", "条目示例", "款目示例"];
-            const idxs = [1, 3, 2, 4, 5];
+            const samples = ["绪论", "研究背景", "国内外现状", "条目示例", "款目示例", "项目示例", "细目示例"];
+            const idxs = [1, 3, 2, 4, 5, 2, 3];
             preview.innerHTML = samples.slice(0, curMax).map((base, i) => {
                 /* 示例链：一级 1、二级 3、三级 2…（与下方内容预览的 2.1 不同，
                  * 文档预览关心的是「本级模板长什么样」。 */
@@ -3142,19 +3347,40 @@ module.exports = class DocNumberPlugin extends Plugin {
                 await sleep(200);
             }
         }
+        /* v1.2.0：所有状态都在唯一属性 custom-doc-num-meta 的一个 JSON 里。
+         * 这里只作兜底；下面一次 SQL 查 attributes 表（结构化、无需解 HTML 实体）会覆盖。
+         * 兼容：未迁移的设备仍能从旧属性读出 head，避免升级后误剥学号（只读，绝不写回）。 */
         (numRows || []).forEach((r) => {
+            const A0 = (typeof globalThis !== "undefined" && globalThis.MSTdnAttrs) || null;
+            const P0 = (typeof globalThis !== "undefined" && globalThis.MSTreePrefix) || null;
             const ial = String(r.ial || "");
-            const m = /custom-doc-num="([^"]*)"/.exec(ial);
-            const pm = /custom-doc-pad="([^"]*)"/.exec(ial);
-            /* v0.8.9：同一次 ial 里顺带把 JSON 元数据解析出来，零额外请求。 */
-            const meta = DN.parseIalMeta(ial);
-            if (!m && !meta) return;
-            numMap.set(r.id, {
-                num: m ? m[1] : "",
-                pad: pm ? (Number(pm[1]) || 0) : 0,
-                meta: meta,
-            });
+            let node = A0 ? A0.toNode(A0.fromIal(ial, DN.decodeIalText)) : null;
+            if (!node) {
+                const legacy = P0 ? P0.parseOwn(ial, DN.decodeIalText) : null;
+                const m = /custom-doc-num="([^"]*)"/.exec(ial);
+                const pm = /custom-doc-pad="([^"]*)"/.exec(ial);
+                if (legacy || m) node = {
+                    num: m ? m[1] : "",
+                    pad: pm ? (Number(pm[1]) || 0) : 0,
+                    meta: DN.parseIalMeta(ial),
+                    own: legacy ? {owned: "1", head: legacy.head || "", tail: legacy.tail || ""} : null,
+                };
+            }
+            if (node) numMap.set(r.id, node);
         });
+
+        /* v1.2.0：一次 SQL 读回全部文档状态（原来要查 3 个属性 + 解 ial）。 */
+        const TA = (typeof globalThis !== "undefined" && globalThis.MSTdnAttrs) || null;
+        if (TA) {
+            try {
+                const attrRows = await sql("SELECT block_id, value FROM attributes "
+                    + "WHERE name='" + TA.ATTR + "' AND box='" + esc(box) + "' LIMIT 20000");
+                (attrRows || []).forEach(function (r) {
+                    const node = TA.toNode(TA.parse(r.value));
+                    if (node) numMap.set(r.block_id, node);
+                });
+            } catch (e) { /* SQL 失败 → 保留 ial 兜底结果 */ }
+        }
 
         const orders = {};
         const names = {};
@@ -3201,7 +3427,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                 made.children.forEach((c) => {
                     names[c.id] = c.title;
                     const rec = numMap.get(c.id);
-                    if (rec) { c.num = rec.num; c.pad = rec.pad; c.meta = rec.meta; }
+                    if (rec) { c.num = rec.num; c.pad = rec.pad; c.meta = rec.meta; c.own = rec.own; }
                 });
 
                 // 拖动刚发生时，内核缓存可能还没刷新；事件自带的 childIDs 就是用户拖出的新顺序
@@ -3302,7 +3528,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                      * rootNum = 祖先链编号，不含同级/其它分支。 */
                     const rootID = (t.type === "notebook") ? DN.topDocIdOf(p.path) : t.id;
                     const meta = DN.docNumMeta(rootID, p.chain, t.id);
-                    await this.writeDocNumAttr(p.id, p.num, p.pad, meta);
+                    await this.writeDocNumAttr(p.id, p.num, p.pad, meta, p.own);
                     if (p.attrOnly) result.attrOnly = (result.attrOnly || 0) + 1;
                 } catch (e) {
                     result.failed.push({id: p.id, title: p.to, error: e.message});
@@ -4206,7 +4432,7 @@ module.exports = class DocNumberPlugin extends Plugin {
                     const rootID = (t.type === "notebook") ? DN.topDocIdOf(node.path) : t.id;
                     const attrs = {};
                     attrs[DN.META_ATTR] = DN.docNumMeta(rootID, node.chain, t.id);
-                    items.push({id: id, attrs: attrs});
+                    items.push({id: id, attrs: attrs, metaPatch: attrs[DN.META_ATTR]});
                 }
                 (node.children || []).forEach((c) => walk(c, false));
             };
@@ -4217,10 +4443,27 @@ module.exports = class DocNumberPlugin extends Plugin {
             sample: items.slice(0, 3)};
         if (o.dryRun) return preview;
         let written = 0;
+        const A2 = (typeof globalThis !== "undefined" && globalThis.MSTdnAttrs) || null;
         for (let i = 0; i < items.length; i += 100) {
             const chunk = items.slice(i, i + 100);
-            await api("/api/attr/batchSetBlockAttrs", {blockAttrs: chunk});
-            written += chunk.length;
+            let cur = {};
+            try {
+                cur = await api("/api/attr/batchGetBlockAttrs",
+                                {ids: chunk.map(x => x.id)}) || {};
+            } catch (e) { /* 读不到就只写 meta 三字段 */ }
+            const merged = chunk.map(function (x) {
+                const raw = cur && cur[x.id] ? cur[x.id][A2 ? A2.ATTR : DN.META_ATTR] : "";
+                const o = A2 ? A2.parse(raw) : null;
+                let patch = {};
+                try { patch = JSON.parse(x.metaPatch) || {}; } catch (e) {}
+                const out = {};
+                const attrs = {};
+                const all = A2 ? A2.merge(o, patch) : Object.assign({}, o || {}, patch);
+                attrs[DN.META_ATTR] = JSON.stringify(A2 ? A2.compact(all) : all);
+                return {id: x.id, attrs: attrs};
+            });
+            await api("/api/attr/batchSetBlockAttrs", {blockAttrs: merged});
+            written += merged.length;
         }
         return Object.assign(preview, {written: written});
     }
@@ -4255,43 +4498,43 @@ module.exports = class DocNumberPlugin extends Plugin {
      * 只算不写：采集一篇文档的标题、跑 buildBodyPlan，返回 {ok, docTitle, prefix, plan}。
      * 快捷键 / 自动 / 批量三个入口共用同一份判定与安全闸。
      */
-    /** 把编号写进文档属性 custom-doc-num（v0.8.0）。
-     *  这是「模板怎么变都无所谓」的关键：号存在文档上，正文编号只读属性，不再猜标题长相。
-     *  num 为空 → 清掉属性（文档被排除 / 不再编号时）。 */
-    async writeDocNumAttr(id, num, pad, meta) {
+    /** v1.2.0：文档状态只写唯一属性 custom-doc-num-meta，值是一个 JSON 字符串。
+     *  num / pad / head 与 meta 三字段（rootID / rootNum / targetId）一起写入；
+     *  owned（恒 1）与 tail（从未用）已剔除。 */
+    async writeDocNumAttr(id, num, pad, meta, own) {
         if (!id || !ID_RE.test(String(id))) return false;
-        const attrs = {
-            "custom-doc-num": (num == null || num === "") ? "" : String(num),
-            "custom-doc-pad": (pad ? String(pad) : ""),
-        };
-        /* v0.8.9：meta 是 custom-doc-num-meta 的 JSON 字符串，和上面两个属性一次写掉。 */
-        if (meta != null) attrs[DN.META_ATTR] = String(meta);
+        const A3 = (typeof globalThis !== "undefined" && globalThis.MSTdnAttrs) || null;
+        let o = {};
+        if (meta != null) { try { o = JSON.parse(String(meta)) || {}; } catch (e) {} }
+        o.num = (num == null || num === "") ? "" : String(num);
+        o.pad = pad ? Number(pad) : 0;
+        if (own && own.head) o.head = String(own.head); else delete o.head;
+        const attrs = {};
+        attrs[A3 ? A3.ATTR : DN.META_ATTR] = JSON.stringify(A3 ? A3.compact(o) : o);
         try {
             await api("/api/attr/setBlockAttrs", {id: id, attrs: attrs});
             return true;
         } catch (e) { return false; }
     }
 
-    /** 读文档属性里的编号。实时接口优先，失败退回 SQL（ial 字段）。 */
+    /** v1.2.0：读唯一 JSON 属性里的 num / pad。实时接口优先，失败退回 SQL（ial 字段）。 */
     async readDocNumAttr(id) {
         const empty = {num: "", pad: 0};
         if (!id || !ID_RE.test(String(id))) return empty;
+        const A4 = (typeof globalThis !== "undefined" && globalThis.MSTdnAttrs) || null;
+        const pick = function (o) {
+            if (!o) return empty;
+            return {num: String(o.num == null ? "" : o.num).trim(), pad: Number(o.pad) || 0};
+        };
         try {
             const d = await api("/api/attr/getBlockAttrs", {id: id});
             const attrs = (d && d.attrs) || d || {};
-            const num = attrs["custom-doc-num"];
-            if (num != null && String(num).trim()) {
-                return {num: String(num).trim(), pad: Number(attrs["custom-doc-pad"]) || 0};
-            }
-            return empty;
+            return pick(A4 ? A4.parse(attrs[A4.ATTR]) : null);
         } catch (e) { /* 落到 SQL */ }
         try {
             const rows = await sql("SELECT ial FROM blocks WHERE id='" + esc(id) + "' LIMIT 1");
             const ial = rows && rows[0] ? String(rows[0].ial || "") : "";
-            const m = /custom-doc-num="([^"]*)"/.exec(ial);
-            if (!m || !String(m[1]).trim()) return empty;
-            const pm = /custom-doc-pad="([^"]*)"/.exec(ial);
-            return {num: String(m[1]).trim(), pad: pm ? (Number(pm[1]) || 0) : 0};
+            return pick(A4 ? A4.fromIal(ial, DN.decodeIalText) : null);
         } catch (e) { return empty; }
     }
 
@@ -4638,11 +4881,12 @@ module.exports = class DocNumberPlugin extends Plugin {
        剥号时先按属性精确移除，命中就完全不跑正则 —— 用户文本里的年份、版本号、金额
        再也不会被误当旧编号。无属性的历史文档回退原正则（含日期保护），编号一次后自动纳入。 */
 
-    /** 批量读标记：一次 SQL 拿全，避免逐块请求。 */
+    /** v1.2.0：批量读唯一 JSON 属性里的 bn（正文标题编号）。 */
     async msOwnNums(ids) {
         const out = {};
         const list = (ids || []).filter(Boolean).map(String);
         if (!list.length) return out;
+        const A5 = (typeof globalThis !== "undefined" && globalThis.MSTdnAttrs) || null;
         // 实测：setBlockAttrs/batchSetBlockAttrs 写的自定义属性不进 blocks.ial，
         // 必须用 batchGetBlockAttrs({ids}) 读，SQL 查 ial 会一个都读不到。
         for (let i = 0; i < list.length; i += 100) {
@@ -4651,7 +4895,8 @@ module.exports = class DocNumberPlugin extends Plugin {
                                            {ids: list.slice(i, i + 100)});
                 Object.keys(d || {}).forEach(k => {
                     const a = d[k] || {};
-                    if (a["custom-body-num"]) out[k] = String(a["custom-body-num"]);
+                    const o = A5 ? A5.parse(a[A5.ATTR]) : null;
+                    if (o && o.bn) out[k] = String(o.bn);
                 });
             } catch (e) {}
         }
@@ -4663,9 +4908,12 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (!list.length) return 0;
         let n = 0;
         for (let i = 0; i < list.length; i += 100) {
-            const chunk = list.slice(i, i + 100).map(x => ({
-                id: x.id, attrs: {"custom-body-num": String(x.num)},
-            }));
+            const A6 = (typeof globalThis !== "undefined" && globalThis.MSTdnAttrs) || null;
+            const chunk = list.slice(i, i + 100).map(x => {
+                const attrs = {};
+                attrs[A6 ? A6.ATTR : "custom-doc-num-meta"] = JSON.stringify({bn: String(x.num)});
+                return {id: x.id, attrs: attrs};
+            });
             try {
                 await this.msApi("/api/attr/batchSetBlockAttrs", {blockAttrs: chunk});
                 n += chunk.length;
@@ -4801,9 +5049,14 @@ module.exports = class DocNumberPlugin extends Plugin {
         // 先短路返回。BN.stripNumber 内部已有同一份日期保护（见 build_fusion.py 的 D 步）。
         const isDate = (typeof globalThis !== "undefined" && globalThis.__msIsDateHead) || null;
         if (isDate && isDate(out)) return out;
+        // v1.1.2 B 方案：学号 / 年份 / 日期 / 纯数字开头的文档名也是正文，不参与剥号。
+        const TP = (typeof globalThis !== "undefined" && globalThis.MSTreePrefix) || null;
+        if (TP && TP.isProtected(out)) return out;
+        const before = out;
         try { out = DN.stripByFormats(out, list); } catch (e) {}
         try { out = BN.stripNumber(out, BN.bodyStripRegexes(bodyStripList(cfg))); } catch (e) {}
-        return out;
+        // 剥成空串（「第4篇」）→ 回退原文，否则这类文档永远不参与编号。
+        return String(out).trim() ? out : before;
     }
     /** 导出 = front matter + 自动插入的「# 文档标题」+ 正文，按文档名核对后剥掉那一行。 */
     async msStripMdSafe(id, docTitle) {

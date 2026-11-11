@@ -2,18 +2,20 @@
 
 ![icon](icon.png)
 
+![Settings panel of tree-doc numbering](preview.png)
+
 ---
 
 ## 1 In One Sentence
 
-A linked numbering scheme for child-document titles in the SiYuan document tree **and** for heading blocks inside those documents. Set a scope once; creating, deleting, dragging or renaming documents renumbers everything automatically. Only titles change — document IDs, body blocks and backlinks stay untouched. Since v1.1.1 document merge and split is built in, sharing the same numbering configuration.
+A linked numbering scheme for child-document titles in the SiYuan document tree **and** for heading blocks inside those documents. Set a scope once; creating, deleting, dragging or renaming documents renumbers everything automatically. Only titles change — document IDs, body blocks and backlinks stay untouched. Document merge and split is built in and shares the same numbering configuration.
 
 ## 2 What It Does
 
 | Feature | Description |
 |---|---|
 | 2.1 Automatic tree numbering | Right-click a document or a whole notebook to define a scope; creating / deleting / dragging / renaming renumbers the whole subtree about 1.5 s later, with no dialog |
-| 2.2 Five built-in levels | Numbers up to 5 levels by default (part / chapter / section …); each level has its own template and counter mode |
+| 2.2 Built-in scheme | 5 levels by default, **limit 7** (press + twice for levels 6/7); each level has its own template and counter mode |
 | 2.3 Body-heading numbering | H1–H5 inside a document get prefixes taken from the chapter / section number in the document title; `Ctrl+Alt+1…5` sets a level and recalculates the whole document |
 | 2.4 Automatic body renumbering | After heading blocks change, only the affected document is recalculated after a 1.5 s pause; documents outside the scope are never touched |
 | 2.5 Follows custom sort order | Numbering order at every level is the order currently shown in the document tree; dragging a document renumbers it |
@@ -21,16 +23,16 @@ A linked numbering scheme for child-document titles in the SiYuan document tree 
 | 2.7 Format changes heal themselves | Switching templates or reducing levels strips the old prefix before applying the new one, so no doubled numbers appear |
 | 2.8 Two undo chains | "Undo last numbering" restores document titles, "Undo last body numbering" restores body headings; auto-numbering pauses after an undo |
 | 2.9 Titles only | Document ID, ID path, body block IDs, child/grandchild IDs and backlinks are unchanged |
-| 2.10 Metadata for other plugins | `custom-doc-num` / `custom-doc-num-pad` / `custom-doc-num-meta` are written as document attributes; the cross-reference plugin (`siyuan-xref`) uses them to compute scope levels |
+| 2.10 Metadata for other plugins | **All state lives in one JSON attribute `custom-doc-num-meta`**: doc blocks hold `rootID` / `rootNum` / `targetId` / `num` / `pad` / `head`, body headings hold `bn`; `siyuan-xref` uses it for scope levels. The attribute panel drops from 5 entries to 1 |
 
 | 2.12 Document Merge & Split | A second submenu with split-to-children / split-to-siblings / merge-children / merge-into-one, sharing the same numbering configuration |
-| 2.13 Number vs. Text Isolation | Plugin numbers live in a heading block attribute and are removed precisely; years, version numbers and amounts at the start of your heading are never mistaken for old numbers |
+| 2.13 Number vs. Text Isolation | Plugin numbers live in the single JSON block attribute (`head` / `bn`) and are removed precisely; years, version numbers and amounts at the start of your heading are never mistaken for old numbers |
 | 2.14 Event Scope Isolation | Tree-numbering events never trigger body-heading numbering; body numbering only affects the current document |
 | 2.15 Batch Writes | Read block order, then one batch block update and one batch attribute write instead of per-block requests |
 
-### 2.11 Built-in Five-Level Scheme and Counter Modes
+### 2.11 Built-in Scheme (5 Levels by Default, Limit 7) and Counter Modes
 
-All child documents inside a selected scope are numbered by level. **v0.4.0 introduced a built-in five-level scheme** (specified by the user on 2026-11-07; the default numbers 5 levels):
+All child documents inside a selected scope are numbered by level. **Built-in numbering scheme**: 5 levels by default, limit 7 (press + twice to enable levels 6/7):
 
 | Level | Template | Counter mode | Example |
 |---|---|---|---|
@@ -39,7 +41,9 @@ All child documents inside a selected scope are numbered by level. **v0.4.0 intr
 | 3 | `第{n}部 {title}` | restart per parent | `第1部 Experimental design` |
 | 4 | `第{n}章 {title}` | **restart per grandparent** | `第3章 Measurement` |
 | 5 | `第{parentN}.{n}节 {title}` | restart per parent | `第3.1节 Sampling` |
-| 6 and deeper | left unchanged | — | — |
+| 6 | `{prefix}.{n} {title}` | restart per parent | `1.2.3 Sub-item` |
+| 7 | `{prefix}.{n} {title}` | restart per parent | `1.2.3.1 Detail` |
+| 8 and deeper | left unchanged | — | — |
 
 Three counter modes, selectable per level in the settings panel:
 
@@ -47,11 +51,11 @@ Three counter modes, selectable per level in the settings panel:
 - **Restart per parent (`local`)**: starts at 1 under each new parent document.
 - **Restart per grandparent (`grandlocal`)**: changing parent keeps counting; only changing grandparent restarts at 1. Level 4 ("chapter") uses it, so chapters under the same `【1】` continue 1, 2, 3… across several "parts", and only restart under `【2】`.
 
-In `第1.1节` the first number is the **parent chapter number** (`{parentN}`) and the second is the **section number** (`{n}`, restarted per chapter). All five levels are built-in defaults and each can be replaced (English, number after the title, different separators — see 7.4).
+In `第1.1节` the first number is the **parent chapter number** (`{parentN}`) and the second is the **section number** (`{n}`, restarted per chapter). Only levels 1–5 are enabled by default; levels 6 and 7 appear after pressing + twice and default to `{prefix}.{n} {title}` with "restart per parent". All seven levels are editable (English, number after the title, different separators — see 7.4).
 
-> **Upgrade note**: when upgrading from v0.3, only configurations that were **never customised** are migrated once to the new defaults (settings only, **no document titles are changed**). Customised formats are left alone; use "Restore built-in defaults" in the panel to switch.
+> **Upgrade note**: when upgrading from an earlier version, only configurations that were **never customised** are migrated once to the new defaults (settings only, **no document titles are changed**). Customised formats are left alone; use "Restore built-in defaults" in the panel to switch.
 
-Since **v0.5.0** heading blocks inside documents can also be numbered (H1 `1.1.1` / H2 `1.1.1.1` / H3 `（1）` / H4 `1）` / H5 `①`), with the prefix taken automatically from the section or chapter number in the document title: `Ctrl+Alt+1…5` triggers it manually; since **v0.6.0** it can run automatically — heading changes in scoped documents are recalculated after a 1.5 s pause (see 7.5).
+**Body headings**: heading blocks inside documents can also be numbered (H1 `1.1.1` / H2 `1.1.1.1` / H3 `（1）` / H4 `1）` / H5 `①`), with the prefix taken automatically from the section or chapter number in the document title: `Ctrl+Alt+1…5` triggers it manually; it can also run automatically — heading changes in scoped documents are recalculated after a 1.5 s pause (see 7.5).
 
 ## 3 Problems It Solves in SiYuan
 
@@ -98,7 +102,7 @@ In one line: for **deep book structures that are often dragged or reformatted**,
 3. Right-click the target document (or a whole notebook) in the document tree → "Set as auto-numbering scope (renumber on create/delete/drag)". One numbering pass runs immediately.
 4. Click the **≡ list icon** in the top bar (`子文档自动编号`) to open the panel; adjust levels, templates and counter modes, then click "Save and apply".
 
-> **Upgrading from the old name**: since v0.9.2 the package name is `tree-doc-numbering`. SiYuan treats it as a new plugin: copy the configuration from `data/storage/petal/siyuan-plugin-doc-num/` to `data/storage/petal/tree-doc-numbering/` and disable the old plugin, otherwise two instances would renumber the same tree twice.
+> **Upgrading from the old name**: the package name is `tree-doc-numbering`. SiYuan treats it as a new plugin: copy the configuration from `data/storage/petal/siyuan-plugin-doc-num/` to `data/storage/petal/tree-doc-numbering/` and disable the old plugin, otherwise two instances would renumber the same tree twice.
 
 ### 5.3 Settings
 
@@ -107,7 +111,7 @@ In one line: for **deep book structures that are often dragged or reformatted**,
 | Master switch | Pause / resume automatic numbering; the panel fades while paused |
 | "Apply to" | "Default settings" or one specific scope — templates / levels / counter modes are **stored per scope** |
 | Number up to level N | `−` / `+` between 1 and 5; the row-end `×` deletes a level |
-| Template per level | `{n}` `{nn}` `{parentN}` `{parentNN}` `{title}` `{prefix}`; newer tokens `{fn1}~{fn5}` / `{hn1}~{hn5}` / `{fn}` / `{hn}` |
+| Template per level | `{n}` `{nn}` `{parentN}` `{parentNN}` `{title}` `{prefix}`; tree tokens `{fn1}~{fn7}` / `{fn}`, body tokens `{hn1}~{hn5}` / `{hn}` |
 | Counter mode per level | Continuous / restart per parent / restart per grandparent |
 | Body-heading section | Enable `Ctrl+Alt+1…5`, auto-recalculate after heading changes, "Number now" (dry-run count first), undo last body numbering |
 | Scope and exclusion lists | Review and remove existing scopes / exclusions |
@@ -129,7 +133,7 @@ There is no slash command; all entries live in the document-tree context menu, t
 
 ## 7 Usage
 
-### 7.1 Automatic Numbering (main workflow since v0.2.0)
+### 7.1 Automatic Numbering
 
 1. In the left document tree, **right-click the parent document** (numbering applies to its descendants); you may also **right-click a notebook** (all its documents are numbered, with root-level documents treated as level-1 "parts").
 2. Choose **"Set as auto-numbering scope (renumber on create/delete/drag)"**. One pass runs immediately.
@@ -139,7 +143,7 @@ There is no slash command; all entries live in the document-tree context menu, t
 
 Multiple scopes can coexist. The **≡ list icon** opens the panel with the master switch, scope list, "Renumber all now" and "Undo last numbering".
 
-### 7.2 Manual Numbering (v0.1.0 workflow, still available)
+### 7.2 Manual Numbering (still available)
 
 Right-click a document → "Number child documents with the configured format". Right-click any document → "Undo last child-document numbering".
 
@@ -157,22 +161,24 @@ Right-click a document in the tree:
 
 When excluding, existing prefixes in that scope are stripped to restore the original title, avoiding collisions such as `第02章 Appendix` next to a renumbered `第02章 Something`. Exclusions can be reviewed and removed in the panel.
 
-> Real-world pitfall: a notebook node in SiYuan's tree has an **empty** `data-node-id`; the notebook ID lives on the parent `<ul data-url>`. v0.2.0 initially read `data-node-id`, so the context menu never appeared for notebooks. It now detects the node type via `data-type` and reads the ID from the parent `ul[data-url]`.
+> Real-world pitfall: a notebook node in SiYuan's tree has an **empty** `data-node-id`; the notebook ID lives on the parent `<ul data-url>`. The first version read `data-node-id`, so the context menu never appeared for notebooks. It now detects the node type via `data-type` and reads the ID from the parent `ul[data-url]`.
 
-### 7.4 Custom Formats and Levels (since v0.3.0)
+### 7.4 Custom Formats and Levels
+
+![Settings panel: 7 tree levels and 5 body levels](preview.png)
 
 Open the panel via the **≡ list icon**. It follows SiYuan's native dialog layout: a **status card** on top (master switch, faded while paused), a **scrolling settings area** (format table, live preview, scope and exclusion lists) and a **fixed action bar** at the bottom. All controls use native `b3-*` components and `--b3-theme-*` variables, so light and dark themes work automatically; no emoji, no hard-coded colours.
 
 In "Numbering formats and levels":
 
 1. "Apply to" selects **default settings** (for new scopes / manual numbering) or **one specific scope**. Formats, level count and counter modes are **stored separately per scope**.
-2. "Number up to level `−` `5` `+`": `−` / `+` change the count between **1 and 5**; more levels add rows, fewer remove them (v0.4 defaults to 5).
+2. "Number up to level `−` `5` `+`": `−` / `+` change the count between **1 and 7**; more levels add rows, fewer remove them (defaults to 5).
 3. Each row has a **format template** on the left and a **counter mode** on the right:
    - Continuous — same level keeps counting through the whole tree (default for level 1)
    - Restart per parent — restarts at 1 under each new parent (default for levels 2, 3, 5)
    - Restart per grandparent — continues across parents, restarts at a new grandparent (default for level 4 "chapter")
-   - The **× (delete number, added in v0.4.1)** at the far right removes that level; later templates and modes shift up and the level count drops by 1. Removing the last level behaves like `−` (the template is kept and `+` brings it back). With only one level left the button is disabled. Click "Save and apply" to write and renumber.
-4. A live preview shows the current settings. **"Save and apply"** renumbers immediately; **"Restore built-in defaults"** resets templates, counter modes and level count to the v0.4 five-level scheme.
+   - The **× (delete number)** at the far right removes that level; later templates and modes shift up and the level count drops by 1. Removing the last level behaves like `−` (the template is kept and `+` brings it back). With only one level left the button is disabled. Click "Save and apply" to write and renumber.
+4. A live preview shows the current settings. **"Save and apply"** renumbers immediately; **"Restore built-in defaults"** resets templates, counter modes and level count to the built-in default (5 levels; the limit stays 7).
 
 | Placeholder | Meaning | Example with number 3 and parent number 1 |
 |---|---|---|
@@ -185,10 +191,10 @@ In "Numbering formats and levels":
 Copy-paste examples (one line per level):
 
 ```
-v0.4 built-in: {n}【{title}】   【{n}】{title}   第{n}部 {title}   第{n}章 {title}   第{parentN}.{n}节 {title}
-v0.3 legacy:   第{nn}部 {title}  第{nn}章 {title} 第{nn}节 {title}  第{nn}条 {title}  第{nn}款 {title}
-English:       Chapter {nn} - {title}   Sec {n}: {title}  {nn}. {title}  §{n} {title}  {parentN}.{n} {title}
-Number last:   {title}（第{nn}部）  {title}【{n}】  …
+Built-in: {n}【{title}】 【{n}】{title} 第{n}部 {title} 第{n}章 {title} 第{parentN}.{n}节 {title}
+Legacy: 第{nn}部 {title} 第{nn}章 {title} 第{nn}节 {title} 第{nn}条 {title} 第{nn}款 {title}
+English: Chapter {nn} - {title} Sec {n}: {title} {nn}. {title} §{n} {title} {parentN}.{n} {title}
+Number last: {title}（第{nn}部） {title}【{n}】 …
 ```
 
 - **Changing formats or reducing levels strips old numbers first**, so nothing becomes `1【第01部 Introduction】`; levels beyond the configured count return to their original titles.
@@ -198,7 +204,7 @@ Number last:   {title}（第{nn}部）  {title}【{n}】  …
 - **Placeholder titles** (`无标题` / `无命名文档` / `未命名文档` / `Untitled`) are skipped and consume no number; once renamed they get a number. Placeholder documents that already carry an old prefix are stripped first. This can be disabled in the panel.
 - Details are in `格式模板约定.md` (Chinese).
 
-### 7.5 Numbering Body Headings (since v0.5.0)
+### 7.5 Numbering Body Headings
 
 Heading blocks (H1–H5) inside a document receive numbers whose prefix is taken from the **section or chapter number in the document title**:
 
@@ -213,14 +219,14 @@ Heading blocks (H1–H5) inside a document receive numbers whose prefix is taken
 
 - **`Ctrl+Alt+1…5`** turns the current paragraph into a level-N heading and **cascades a recalculation of every heading in the document** (only blocks whose number actually changed are written; idempotent).
 - If the document title has only a chapter number, that is used: in `第3章` H1 becomes `3.1` and H2 `3.1.1`.
-- **Three prefix forms are recognised** (v0.6.3): `第2.1节 …`, `第3章 …`, and a plain numeric start such as **`2.1 …`** (produced by the level-2 tree template `{parentN}.{n} {title}`). The numeric form requires a decimal point followed by a space or a Chinese punctuation mark, so `2024 Annual report` or `3 methods` is not misread.
+- **Three prefix forms are recognised**: `第2.1节 …`, `第3章 …`, and a plain numeric start such as **`2.1 …`** (produced by the level-2 tree template `{parentN}.{n} {title}`). The numeric form requires a decimal point followed by a space or a Chinese punctuation mark, so `2024 Annual report` or `3 methods` is not misread.
 - **Documents with neither section nor chapter number are skipped** rather than given an invented prefix.
 - Templates are customisable per level in the panel ("Body heading numbering"), with `{prefix}` (section/chapter number), `{n}` (own index), `{h1}` (parent level-1 number), `{cn}` (①②…) and `{title}`. With `{title}` the template controls the position; without it the number is prepended and a space is added after the digits.
 - **"Undo last body numbering"** is available both in the bottom action bar and in the body area; it restores the most recent round block by block. After a successful undo, **automatic body renumbering pauses** and must be re-enabled in the panel.
 
 > **Safety gates (from a real incident on 2026-11-07)**: never number a block whose text cannot be read, never write a block that would contain only `#` after stripping, refuse when the caret is on the document root, and skip undo records with empty originals. All body writes go through `updateBlock` one block at a time and stop on interruption — no "half-numbered then continue" behaviour.
 
-### 7.6 Automatic Body Renumbering (since v0.6.0)
+### 7.6 Automatic Body Renumbering
 
 The "Body heading numbering" section has a **"Recalculate after heading changes"** switch (off by default):
 
@@ -229,13 +235,13 @@ The "Body heading numbering" section has a **"Recalculate after heading changes"
 - **Tree-numbering linkage**: when tree numbering renames a document (section/chapter number changes), body prefixes refresh once; undoing the tree change does the same.
 - **No self-excitation**: a full recalculation is idempotent and writes only changed blocks; events caused by the plugin's own writes produce an empty plan on the next round. A **circuit breaker** stops automatic numbering for a document after 3 consecutive identical rounds and shows a message; toggle the switch off and on to reset.
 
-### 7.7 "Number Now" and Depth Normalisation (since v0.6.1)
+### 7.7 "Number Now" and Depth Normalisation
 
-Automatic renumbering only runs when a document is **saved**, so right after installation, documents that have not been edited for a long time have never been numbered at all — not a bug, just never triggered. v0.6.1 added two things:
+Automatic renumbering only runs when a document is **saved**, so right after installation, documents that have not been edited for a long time have never been numbered at all — not a bug, just never triggered. Two things were added:
 
 - **"Number now"** in the panel: numbers body headings in all documents of the scope. The first click only **previews the counts** (documents, places); the button becomes "Confirm writing N places" and a second click writes. One undo snapshot covers the whole batch.
-- **"Renumber all now" handles both** (v0.6.2): it numbers document titles from the tree, then body headings in every scoped document. With body numbering disabled, only document titles are handled. The two undo chains remain independent.
-- **Depth normalisation inside a document**: when a document has **no H1** (common for section-level documents that start at H2), the shallowest heading is treated as level 1. The top heading of `第5.1节` becomes `5.1.1` instead of the literal-level `5.1.1.1`. **Documents that do have an H1 get shift=0 and produce byte-identical output to v0.6.0.** The number of `#` characters never changes — only which level's template is applied.
+- **"Renumber all now" handles both**: it numbers document titles from the tree, then body headings in every scoped document. With body numbering disabled, only document titles are handled. The two undo chains remain independent.
+- **Depth normalisation inside a document**: when a document has **no H1** (common for section-level documents that start at H2), the shallowest heading is treated as level 1. The top heading of `第5.1节` becomes `5.1.1` instead of the literal-level `5.1.1.1`. **Documents that do have an H1 get shift=0 and produce byte-identical output to .** The number of `#` characters never changes — only which level's template is applied.
 
 | Heading in document | Before (literal level) | After |
 |---|---|---|
@@ -253,7 +259,7 @@ On drag, SiYuan broadcasts `filetreeSortChanged` with the new `childIDs` order; 
 
 ### 7.9 Numbering Rules in Detail
 
-- The **built-in default** is the new five-level scheme (see 2.11) with unpadded numbers and `{parentN}` taken from the parent chapter. Every level's template is editable (see 7.4).
+- The **built-in default** enables 5 levels with a limit of 7 (see 2.11), unpadded numbers and `{parentN}` taken from the parent chapter. All 1–7 level templates are editable (see 7.4).
 - Each run strips plugin-added numbers before renumbering, which guarantees idempotency and makes prefixes follow a document when it moves to another level.
 - Stripping regexes are generated from "current format + last format + last global default + global default + core legacy fallbacks + old hard-coded forms". `{nn}` / `{parentNN}` produce `\d{2,}`, `{n}` / `{parentN}` produce `\d+`; Chinese numerals and hand-written decimals stay safe.
 - Prefix + suffix templates (e.g. `{n}【{title}】`) are stripped **as a pair**: the suffix is removed only when the prefix matched, so a hand-written trailing `】` is not eaten.
@@ -262,7 +268,7 @@ On drag, SiYuan broadcasts `filetreeSortChanged` with the new `childIDs` order; 
 - **Freshly created documents with placeholder titles** (`无标题` / `无命名文档` / `未命名文档` / `Untitled` / `新建文档`, including numbered variants) are not numbered and consume no slot; once named they get a number. This can be switched off in the panel.
 - Syncthing `(Conflicted …)` copies are skipped and consume no slot.
 - Only child-document titles inside the scope are changed; **the scope root's own title is untouched**, as are body content and document IDs.
-- **v0.4.1 overlapping scopes**: if both a document and the notebook containing it are scopes, the outer scope numbers only down to that document node and does not descend into its children — those belong to the more specific scope. Otherwise one document would be rewritten alternately under two level schemes (observed as flickering titles in the tree). Automatic checks also have a circuit breaker that pauses after 3 identical rename rounds.
+- **Overlapping scopes**: if both a document and the notebook containing it are scopes, the outer scope numbers only down to that document node and does not descend into its children — those belong to the more specific scope. Otherwise one document would be rewritten alternately under two level schemes (observed as flickering titles in the tree). Automatic checks also have a circuit breaker that pauses after 3 identical rename rounds.
 
 ### 7.10 Titles Only
 
@@ -274,7 +280,7 @@ Tested on SiYuan 3.8.9: renaming uses `/api/filetree/renameDocByID`. **Document 
 
 SiYuan's `Ctrl+Z` **cannot undo API writes** (its undo stack only records editor-initiated operations). Before renaming, the plugin stores each document's old title in its own data file; "Undo last child-document numbering" restores them one by one. A successful undo clears the record and **pauses automatic numbering** (see 7.2).
 
-### 7.12 Document Merge and Split (since v1.1.1)
+### 7.12 Document Merge and Split
 
 Right-click **a concrete document** in the tree and open the **Document Merge & Split** submenu. Existing numbering entries live in the **Tree-Doc Numbering** submenu; the two never mix.
 
@@ -287,17 +293,17 @@ Right-click **a concrete document** in the tree and open the **Document Merge & 
 
 Each pair is the inverse of the other, so repeated split/merge keeps levels, section count and content stable. **All existing numbers are stripped first using this plugin's own formats**, and afterwards **only the documents involved get their body headings renumbered** — no whole-library pass, no unrelated documents touched.
 
-Numbers are isolated from your text with the `custom-body-num` block attribute: the pure number is stored on the heading block (attributes never enter Markdown or exports), and stripping removes exactly that recorded prefix instead of guessing with regexes. Headings such as `2026-11-10 Meeting`, `3.2 Release Notes`, `100 CNY Budget` or `2024-08-09 Field Work` therefore keep their leading numbers. For legacy documents without a marker only unambiguous forms (Chinese numerals / 第N章 / 【N】) are stripped.
+Numbers are isolated from your text with the `bn` field of the **single attribute `custom-doc-num-meta`**: the pure number is stored in that JSON attribute on the heading block (attributes never enter Markdown or exports), and stripping removes exactly that recorded prefix instead of guessing with regexes. Headings such as `2026-11-10 Meeting`, `3.2 Release Notes`, `100 CNY Budget` or `2024-08-09 Field Work` therefore keep their leading numbers. For legacy documents without a marker only unambiguous forms (Chinese numerals / 第N章 / 【N】) are stripped.
 
 Writes are batched: `getDocBlocksOrders` → one `batchUpdateBlock` → one `batchSetBlockAttrs`.
 
 ## 8 Limitations
 
-- Defaults to **5 levels**, adjustable to **1–5**; **level 6 and deeper are never numbered** (`MAX_LEVEL = 5` is hard-coded). With the default 5, the fourth and fifth layers also get numbers — set the level count back to 3 if you dislike that.
+- Defaults to **5 levels**, adjustable to **1–7**; **level 8 and deeper are never numbered** (`MAX_LEVEL = 7`). With the default 5, the fourth and fifth layers also get numbers — set the level count back to 3 if you dislike that.
 - Only descendants of a scope root are handled; the root's own title is unchanged. Under a **notebook scope**, each root-level document counts as a level-1 "part" and the notebook name itself is untouched.
-- A single tree expands at most 2000 nodes / 8 levels; deeper trees are truncated [To be confirmed: very large manuscripts were not tested].
+- Collection expands at most 2000 nodes / traversal depth 8 (`MAX_NODES` / `MAX_DEPTH`); deeper trees are truncated [To be confirmed: very large manuscripts were not tested]. **The numbering limit is set separately by `MAX_LEVEL = 7`.**
 - Automatic triggering relies on SiYuan `ws-main` events; if event names change in a future version it degrades to "manual right-click only" and will not corrupt data.
-- With a template like `{n}. {title}`, a hand-written `1. Introduction` is treated as an old plugin prefix and stripped — an inevitable consequence of that format (see `格式模板约定.md` §3). **The v0.4 built-in `第{n}章` also uses a single digit**, so a hand-written `第1章` is stripped; Chinese numerals (`第一章`) are safe.
+- With a template like `{n}. {title}`, a hand-written `1. Introduction` is treated as an old plugin prefix and stripped — an inevitable consequence of that format (see `格式模板约定.md` §3). **The built-in `第{n}章` also uses a single digit**, so a hand-written `第1章` is stripped; Chinese numerals (`第一章`) are safe.
 - Mouse clicks in the top-bar panel, real tree dragging and real right-clicks have not been directly exercised by a human in tests [To be confirmed]; tests used the same API, the panel DOM and event payloads in the same format as the UI.
 - Mobile, the office PC, the laptop and other SiYuan versions are untested; only the **home PC `DESKTOP-PLK096N` / SiYuan 3.8.9 desktop** was tested [To be confirmed].
 - **Undo for automatic body numbering keeps only the latest round**: `body-undo-last.json` is overwritten each round, so earlier rounds cannot be undone.
@@ -308,46 +314,9 @@ Writes are batched: `getDocBlocksOrders` → one `batchUpdateBlock` → one `bat
 
 ---
 
-## 9 How It Works (Appendix)
+## 9 License
 
-- **Collection is pure file-tree recursion**: starting at the scope root (a document, or `/` for a notebook), it calls `listDocsByPath` level by level, using `subFileCount` to decide whether to descend, `name` for the live title and the `files` array for custom sort order. It no longer queries subtrees by SQL `path` prefix — right after creation/deletion the SQL index lags 0.6–2 s and returns stale structure.
-- Leaf documents (`subFileCount = 0`) are not passed to `listDocsByPath`; the kernel rejects them.
-- Automatic triggers listen to `ws-main` `create` / `removeDoc` / `rename` / `filetreeSortChanged`; `savedoc`, `transactions`, `databaseIndexCommit` and `syncPending` (produced by typing) are ignored. Each event is broadcast **twice**, so everything is debounced by 1.5 s.
-- **Structural fingerprint** (levels + IDs + live titles + order at every level) is compared: if the tree did not change, nothing is written. Renames caused by the plugin produce at most one empty check (the plan is idempotent and an empty plan is not written), then the fingerprint converges without self-excitation.
-- **v0.4.1 overlapping-scope pruning**: `collect(target, {pruneIds})` prevents an outer scope from descending into a subtree already owned by a more specific document scope (the node itself is kept); automatic checks also have an oscillation breaker that pauses after 3 identical rename rounds.
-- After writing, the file tree is read back to verify titles (a successful API response does not guarantee a correct result).
-- **Notebook scopes** use a virtual root `path="/.sy"`: `listDocsByPath(notebook, "/")` returns root-level documents as level-1 "parts"; the rest of the recursion is identical to document scopes.
-- `index.js` is assembled by `build.py` from `src/numbering.js` (pure functions) and `src/plugin.js` (plugin body); run `python build.py` after editing sources, never edit `index.js` by hand. Unit tests: `node test/meta_unit.js`, `numbering_unit.js`, `body_numbering_unit.js`.
-- Real-machine tests: `python test/e2e_defaults.py` (five-level scheme), `e2e_live.py` (baseline), `e2e_auto.py` (triggers + exclusions), `e2e_notebook.py`, `e2e_formats.py`. They back up and restore your existing auto-numbering configuration.
-- `test/live_lib.py` locks the v0.3 legacy defaults with `LEGACY_DEFAULTS` so old-chain regressions do not break against the v0.4 defaults.
-- **Panel styling** lives in the `PANEL_CSS` constant in `src/plugin.js` (injected as `<style id="dn-panel-style">`); all class names use the `dn-` prefix so the host UI is not polluted. Icons are inline line SVGs using `currentColor`.
-- **Body-numbering core** is the pure-function module `src/body_numbering.js` (`buildBodyPlan`: read prefix → generate numbers per level → strip old numbers → emit only changed blocks), bundled into `index.js` by `build.py` together with the tree core. Block collection uses `getChildBlocks` (live, reliable order) + `getBlockKramdown` (live raw text per block); **SQL is only a metadata fallback**, because the 0.6–2 s index lag produced empty titles in the first v0.5.0 incident. When a new block is not yet in SQL and its level reads as 0, the number of `#` characters in the live kramdown is used instead.
-- **Automatic body numbering listens only to `savedoc`**: `detail.data.rootID` is the document ID, and `detail.data.sources[].doOperations[].data` is a DOM fragment where `data-type="NodeHeading"` directly identifies heading operations. In `transactions` events the `op.rootID` of update/delete is an empty string (measured), so those events are unusable. Delete operations carry no data, so the whole document is rechecked once (idempotent).
-- **Scope check** `docInTargets`: a document scope means "that document + all its children" — a child's `path` looks like `/<parentID>/<childID>.sy` (the parent directory segment has **no** `.sy`, only the parent's own path does), so the prefix comparison must use the parent ID without `.sy`; a notebook scope compares `box`. Tree-rename linkage passes the **new title** into the queue to avoid SQL lag misclassifying it as "no prefix".
-
----
-
-**Fusion layer and number isolation (v1.1.1)**: `build.py` starts from `fusion/baseline-index.v0.9.5.js` and `fusion/apply.py` applies reproducible patches (pure-function layer, plugin methods, date guard, `preStripped` short-circuit, batch writes, scope-isolation gates and the two-level menu wrapper). `index.js` and `package.zip` therefore stay generated artifacts — edit `fusion/`. The bundled `src/` is a v0.9.4 snapshot and is not fully in sync with the v0.9.5 baseline; releases are built from the baseline. When a heading carries `custom-body-num`, the fusion layer strips exactly that prefix and sets `preStripped=true` so `buildBodyPlan` skips all of its regexes; without a marker only unambiguous number forms are stripped. All writes go through `msBatchWrite()`: block order → `batchUpdateBlock` → `batchSetBlockAttrs`, with a per-block fallback only if the batch API fails.
-
-## 10 Build and Release (Developers)
-
-```bash
-python build.py                     # concatenate src/*.js → index.js, produce package.zip
-node --check index.js
-node test/meta_unit.js              # metadata unit tests
-node test/numbering_unit.js         # tree numbering unit tests
-node test/body_numbering_unit.js    # body numbering unit tests
-python deploy.py --check            # compare source vs deployed copies
-```
-
-- `index.js` and `package.zip` are generated by `build.py`; **do not edit them by hand**.
-- `package.zip` must contain `plugin.json` / `index.js` / `README.md` / `README_en.md` / `icon.png` at the root level.
-- The version must agree in four places: `plugin.json`, `build-info.json`, `PLUGIN_VERSION` in `src/plugin.js`, and the README (`build.py` checks that README contains `v<version>`).
-- Marketplace: v0.9.2 changed the package name to `tree-doc-numbering`, so **first-time inclusion needs a PR to `plugins.txt` in `siyuan-note/bazaar`**; later updates only need a version bump and a new Release [To be confirmed: whether the new name has been submitted].
-
-## 11 License
-
-No LICENSE file was found in the repository, so the license status is [To be confirmed]. Author: `ttChen` (see `plugin.json`).
+The repository root contains `LICENSE` (MIT License, Copyright (c) 2026 ttChen). Author: `ttChen` (see `plugin.json`).
 
 ---
 
@@ -357,6 +326,9 @@ Condensed in English; the full Chinese changelog is in `README.md`.
 
 | Version | Date | Main change |
 |---|---|---|
+| 1.2.1 | 2026-11-11 | Document-tree numbering limit raised from 5 to 7 levels; 7 template rows, `{fn6}`/`{fn7}`, default stays 5 levels; body headings unchanged |
+| 1.2.0 | 2026-11-11 | All plugin state merged into a single JSON attribute `custom-doc-num-meta`; 5 document attributes become 1; xref remains compatible |
+| 1.1.2 | 2026-11-11 | Document-tree numbers use block attributes for exact peeling; student IDs / years / dates / digit-only titles are protected |
 | 1.1.1 | 2026-11-10 | Merged the document merge/split plugin behind two submenus; block-attribute number isolation, date/version-number protection, batched writes, event-scope isolation; reproducible `fusion/` build layer |
 | 0.9.4 | 2026-11-08 | Full bilingual UI: settings panel, context menus, toasts and command names follow `window.siyuan.config.lang`; official `i18n/` files bundled |
 | 0.9.3 | 2026-11-08 | Added full English README, made `readme` language-aware, added `README_en.md` to build/deploy/package manifests |
