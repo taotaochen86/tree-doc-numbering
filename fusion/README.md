@@ -1,6 +1,6 @@
-# fusion/ —— 可复现融合构建层（v1.2.1）
+# fusion/ —— 可复现融合构建层（v1.2.2）
 
-`build.py` 以 `baseline-index.v0.9.5.js` 为基线，按固定顺序应用四步带断言的补丁，生成 `index.js` / `package.zip` / `build-info.json`。**不要手改生成物**；改功能请改对应补丁或纯函数层。
+`build.py` 以 `baseline-index.v0.9.5.js` 为基线，按固定顺序应用五步带断言的补丁，生成 `index.js` / `package.zip` / `build-info.json`。**不要手改生成物**；改功能请改对应补丁或纯函数层。
 
 ## 基线
 
@@ -19,9 +19,10 @@
 2. `apply_b_core.py`：文档树块属性精确剥离。
 3. `apply_attr_core.py`：插件状态收进唯一 JSON 属性。
 4. `apply_level_core.py`：文档树层级上限 5 → 7（正文内容标题仍 5 级）。
+5. `apply_idem_core.py`：正文编号幂等判定改用剥离前原文，消除「连续 3 轮不同结果」误报。
 
 每处替换都断言锚点命中次数，锚点不匹配即报错，避免静默漏改。补丁文件请勿缩进（保证 JS 锚点逐字匹配）。`apply_core.py` 的 G 步把基线里的 `PLUGIN_VERSION` 对齐 `plugin.json`，改版本号只需改 `plugin.json`。
 
 ## 注意
 
-仓库 `src/` 是 v0.9.4 源码快照，与 v0.9.5 基线不完全同步（例如 `stripNumber` 实现有差异），因此构建不直接拼接 `src/`，而以基线为准；`build-info.json` 里仍记录 `src/` 的 md5 供追溯。离线单测 `test/level7_unit.js` 直接加载生成物 `index.js` 的纯函数层，避免只测到历史快照。
+仓库 `src/` 是 v0.9.4 源码快照，与 v0.9.5 基线不完全同步（例如 `stripNumber` 实现有差异），因此构建不直接拼接 `src/`，而以基线为准；`build-info.json` 里仍记录 `src/` 的 md5 供追溯。离线单测 `test/level7_unit.js`、`test/body_idem_unit.js` 直接加载生成物 `index.js` 的纯函数层，避免只测到历史快照。

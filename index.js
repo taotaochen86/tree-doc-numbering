@@ -1,4 +1,4 @@
-/* 子文档自动编号 v1.2.1 · 本文件由 build.py 生成，请勿手改
+/* 子文档自动编号 v1.2.2 · 本文件由 build.py 生成，请勿手改
  * 源码：fusion/ 基线 + 融合补丁（详见 fusion/README.md）
  * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin
  */
@@ -1172,7 +1172,9 @@
         var blocks = (o.blocks || []).map(function (b) {
             var lv = Number(b.level) || 0;
             if (focus && String(b.id) === String(focus.id)) lv = Number(focus.level) || lv;
+            /* v1.2.2：original 必须透传到下一层，否则幂等基准会退回剥后裸标题 */
             return {id: b.id, level: lv, markdown: String(b.markdown == null ? "" : b.markdown),
+                    original: b.original != null ? String(b.original) : null,
                     preStripped: !!b.preStripped};
         });
 
@@ -1186,7 +1188,10 @@
             var parts = splitMarkdown(b.markdown);
             var eff = focused ? (Number(b.level) || 0)
                              : (parts.hashes ? parts.hashes.length : 0);
+            /* v1.2.2：D 方案传进来的 markdown 是「剥掉编号后的裸标题」，
+             * 必须另存剥离前原文，幂等判定和撤销快照的 from 都以原文为准。 */
             return {id: b.id, level: eff, markdown: b.markdown,
+                    original: b.original != null ? b.original : b.markdown,
                     focused: focused, parts: parts, preStripped: !!b.preStripped};
         });
 
@@ -1275,8 +1280,13 @@
                     + (body && /\d$/.test(numCore.trimEnd()) ? " " : "") + body;
             }
             if (nl === 1) h1Num = pureH1(cur[1]);
-            if (to.trimEnd() !== String(b.markdown).trimEnd()) {
-                plan.push({id: b.id, from: b.markdown, to: to, level: lv, levelNorm: nl,
+            /* v1.2.2 修复「连续 3 轮算出不同结果」误报：以前拿 to（带编号）
+             * 跟 b.markdown（剥后裸标题）比，永远不相等 → 每轮重写相同内容 →
+             * 触发标题变化事件 → 自动重算自激循环。改用剥离前原文比较；
+             * from 也用原文，撤销快照记的才是真实旧值。 */
+            var cmpMd = String(b.original != null ? b.original : b.markdown).trimEnd();
+            if (to.trimEnd() !== cmpMd) {
+                plan.push({id: b.id, from: cmpMd, to: to, level: lv, levelNorm: nl,
                            number: numCore});
             }
         }
@@ -1585,7 +1595,7 @@ const DN = globalThis.DocNumbering;
 const BN = globalThis.BodyNumbering;
 
 /* 版本号唯一来源：build.py 会拿它和 plugin.json 的 version 比对，不一致直接报错。 */
-const PLUGIN_VERSION = "1.2.1";
+const PLUGIN_VERSION = "1.2.2";
 
 const UNDO_FILE = "undo-last.json";
 const BODY_UNDO_FILE = "body-undo-last.json";
@@ -3821,9 +3831,11 @@ module.exports = class DocNumberPlugin extends Plugin {
          * 并标记 preStripped 让 buildBodyPlan 跳过正则。无标记（历史文档）回退原逻辑。 */
         const ownNums = await this.msOwnNums(ordered.map((b) => b.id));
         const blocks = ordered.map((b) => {
-            const peeled = this.msStrictPeel(mdMap.get(b.id) || "", ownNums[String(b.id)]);
+            const rawMd = mdMap.get(b.id) || "";
+            const peeled = this.msStrictPeel(rawMd, ownNums[String(b.id)]);
+            /* v1.2.2：original 保留剥离前原文，供 buildBodyPlan 做幂等比较 */
             return {id: b.id, level: b.level, markdown: peeled.markdown,
-                    preStripped: peeled.hit};
+                    original: rawMd, preStripped: peeled.hit};
         });
         /* 新块 SQL 未就绪时 level 读成 0：从实时 kramdown 的 # 数兜底推导（与 numberBodyDoc 同款） */
         blocks.forEach((b) => {
@@ -4566,9 +4578,11 @@ module.exports = class DocNumberPlugin extends Plugin {
          * 并标记 preStripped 让 buildBodyPlan 跳过正则。无标记（历史文档）回退原逻辑。 */
         const ownNums = await this.msOwnNums(ordered.map((b) => b.id));
         const blocks = ordered.map((b) => {
-            const peeled = this.msStrictPeel(mdMap.get(b.id) || "", ownNums[String(b.id)]);
+            const rawMd = mdMap.get(b.id) || "";
+            const peeled = this.msStrictPeel(rawMd, ownNums[String(b.id)]);
+            /* v1.2.2：original 保留剥离前原文，供 buildBodyPlan 做幂等比较 */
             return {id: b.id, level: b.level, markdown: peeled.markdown,
-                    preStripped: peeled.hit};
+                    original: rawMd, preStripped: peeled.hit};
         });
         /* 新插入的块 SQL 未就绪时 meta 缺失、level 读成 0：从实时 kramdown 的 # 数兜底推导，
          * 否则插入标题那一轮会被整篇跳过（v0.6.0 E2E 测试 4 抓到）。段落不会以未转义 # 开头，安全。 */
@@ -4589,7 +4603,13 @@ module.exports = class DocNumberPlugin extends Plugin {
                                     normalizeDepth: true});
         if (r.reason === "no-prefix") return {ok: false, reason: "no-prefix", docId: docId, docTitle: docTitle};
         /* 安全闸（2026-11-07 真机事故教训）：剥完只剩井号 / 空内容的条目绝不写 */
-        const safe = r.plan.filter((p) => String(p.to || "").replace(/^#+\s*/, "").trim());
+        const safe = r.plan.filter((p) => {
+            if (!String(p.to || "").replace(/^#+\s*/, "").trim()) return false;
+            /* v1.2.2 零成本兜底：mdMap 是这一轮刚读到的原始 markdown，
+             * 目标与现状逐字相同就不必写（写也会触发标题变化事件）。 */
+            const cur = mdMap.get(p.id);
+            return cur == null || String(cur).trimEnd() !== String(p.to).trimEnd();
+        });
         return {ok: true, docId: docId, docTitle: docTitle, prefix: r.prefix,
                 prefixKind: r.prefixKind, depthShift: r.depthShift || 0, plan: safe};
     }

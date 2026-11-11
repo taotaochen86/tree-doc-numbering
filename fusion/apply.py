@@ -20,4 +20,8 @@ def apply_fusion(s, core, methods, version):
     # v1.2.1：文档树层级上限 5 -> 7（独立补丁步，锚点逐处断言）
     l = runpy.run_path(os.path.join(HERE, "apply_level_core.py"),
                        init_globals={"s": s, "core": core, "methods": methods, "version": version})
-    return l["s"]
+    s = l["s"]
+    # v1.2.2：正文编号幂等判定改用剥离前原文，消除「连续 3 轮不同结果」误报
+    i = runpy.run_path(os.path.join(HERE, "apply_idem_core.py"),
+                       init_globals={"s": s, "core": core, "methods": methods, "version": version})
+    return i["s"]

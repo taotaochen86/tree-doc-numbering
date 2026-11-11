@@ -15,7 +15,7 @@ const DN = globalThis.DocNumbering;
 const BN = globalThis.BodyNumbering;
 
 /* 版本号唯一来源：build.py 会拿它和 plugin.json 的 version 比对，不一致直接报错。 */
-const PLUGIN_VERSION = "1.2.1";
+const PLUGIN_VERSION = "1.2.2";
 
 const UNDO_FILE = "undo-last.json";
 const BODY_UNDO_FILE = "body-undo-last.json";

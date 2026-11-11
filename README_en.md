@@ -326,6 +326,7 @@ Condensed in English; the full Chinese changelog is in `README.md`.
 
 | Version | Date | Main change |
 |---|---|---|
+| 1.2.2 | 2026-11-11 | Fix false "3 consecutive rounds" warning in body numbering: idempotency now compares against pre-peel original markdown, so already-numbered headings produce an empty plan and no rewrite loop; 10 new unit tests |
 | 1.2.1 | 2026-11-11 | Document-tree numbering limit raised from 5 to 7 levels; 7 template rows, `{fn6}`/`{fn7}`, default stays 5 levels; body headings unchanged |
 | 1.2.0 | 2026-11-11 | All plugin state merged into a single JSON attribute `custom-doc-num-meta`; 5 document attributes become 1; xref remains compatible |
 | 1.1.2 | 2026-11-11 | Document-tree numbers use block attributes for exact peeling; student IDs / years / dates / digit-only titles are protected |

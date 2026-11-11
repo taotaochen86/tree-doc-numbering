@@ -1,7 +1,7 @@
 {
   "name": "tree-doc-numbering",
   "author": "ttChen",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "url": "https://github.com/taotaochen86/tree-doc-numbering",
   "minAppVersion": "3.8.9",
   "backends": [
