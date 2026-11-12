@@ -301,6 +301,28 @@
         }
         return false;
     }
+    /** 统一等待：一批新建文档**一起**等进 SQL 索引，而不是逐篇等。
+     * 实测（思源 3.8.10）：createDocWithMd 43–106ms，建完立刻 getChildBlocks 就有数据、
+     * appendBlock/导出正文均正常；只有 SQL 索引滞后，实测 2168/2842/3021ms，
+     * 且是固定一次的流水延迟、不按篇累加（连建 10 篇 502ms，全部进索引 2148ms）。
+     * 逐篇等会把这份延迟乘上篇数（3 篇 ≈ 9s，全部时间都耗在等待上）。 */
+    async msWaitIndexedAll(ids) {
+        const list = (ids || []).filter(x => MSCORE.ID_RE.test(String(x)));
+        if (!list.length) return true;
+        const need = new Set(list.map(String));
+        const inList = list.map(x => "'" + String(x).replace(/'/g, "''") + "'").join(",");
+        for (let i = 0; i < 40; i++) {          // 上限 6s
+            try {
+                const rows = await this.msSql("SELECT id FROM blocks WHERE type='d' AND id IN (" + inList + ")");
+                (rows || []).forEach(r => need.delete(String(r.id)));
+            } catch (e) {}
+            if (!need.size) return true;
+            await new Promise(r => setTimeout(r, 150));
+        }
+        // 超时不算失败：编号按已有 ID 走，缺的只是属性，稍后自动检查会补
+        console.warn("[merge-split] 这批新文档仍有 " + need.size + " 篇未进索引，继续执行不阻塞");
+        return false;
+    }
     async msCreateDoc(box, path, markdown) {
         let last = "";
         const q = path.replace(/'/g, "''");
@@ -547,12 +569,12 @@
                                              : MSCORE.hpathSibling(hpath, name);
             const body = MSCORE.promoteBody(sec.body);      // 其余标题提升一级；原最高层标题不写入
             const made = await this.msCreateDoc(box, path, body);
-            await this.msWaitReady(made);
-            await this.msWaitIndexed(made);
             created.push(made);
-            // 连续建文档会与自动编号 / 同步抢元数据，留一点间隔避免下一次 metadata not ready
-            await new Promise(r => setTimeout(r, 500));
         }
+        // v1.2.3 性能：先全部建完，再统一等一次进索引。
+        // 旧写法逐篇 msWaitIndexed（实测 2.1–3.0s）+ 固定 sleep 500ms，等于把
+        // 「固定一次的索引流水延迟」乘上篇数，3 篇就要 9s，全部时间都耗在等待上。
+        await this.msWaitIndexedAll(created);
         // 原文档：一次 updateBlock 只写一级标题前的文本，避免 clear+append 留下空段落块
         const preamble = MSCORE.trimBlankLines(parts.preamble);
         await this.msApi("/api/block/updateBlock",
