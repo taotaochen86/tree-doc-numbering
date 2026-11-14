@@ -1,4 +1,4 @@
-/* 子文档自动编号 v1.2.3 · 本文件由 build.py 生成，请勿手改
+/* 子文档自动编号 v1.2.4 · 本文件由 build.py 生成，请勿手改
  * 源码：fusion/ 基线 + 融合补丁（详见 fusion/README.md）
  * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin
  */
@@ -1595,7 +1595,7 @@ const DN = globalThis.DocNumbering;
 const BN = globalThis.BodyNumbering;
 
 /* 版本号唯一来源：build.py 会拿它和 plugin.json 的 version 比对，不一致直接报错。 */
-const PLUGIN_VERSION = "1.2.3";
+const PLUGIN_VERSION = "1.2.4";
 
 const UNDO_FILE = "undo-last.json";
 const BODY_UNDO_FILE = "body-undo-last.json";
@@ -5179,6 +5179,137 @@ module.exports = class DocNumberPlugin extends Plugin {
     async msClearDoc(docId) {
         return this.msApi("/api/block/updateBlock", {id: docId, dataType: "markdown", data: ""});
     }
+
+    /* ===== v1.2.4 搬块层：块 ID 不变 → 题注属性 custom-xref、块引用、反链全部保留 =====
+     * 背景（2026-11-14 实测）：exportMdContent 不带块属性，createDocWithMd 会重建新块，
+     * 于是「图表公式交叉引用」插件的题注身份（custom-xref）和指向旧块 ID 的引用全丢。
+     * 实测（思源 3.8.10）：/api/transactions 的 move 操作搬块后，块 ID、custom-xref、
+     * refs 表里的 def_block_id / def_block_path 全部原样保留（自动跟着改所在文档）。 */
+
+    /** 读文档的直接子块（保持文档内顺序）。 */
+    async msBlockList(docId) {
+        for (let i = 0; i < 3; i++) {
+            try {
+                const d = await this.msApi("/api/block/getChildBlocks", {id: docId});
+                if (Array.isArray(d)) return d.filter(k => k && MSCORE.ID_RE.test(String(k.id)));
+            } catch (e) {}
+            await new Promise(r => setTimeout(r, 200));
+        }
+        return [];
+    }
+    /** 空块判定：思源的空段落导出成「　　‍」（全角空格 + 零宽字符）。 */
+    msIsBlankBlock(k) {
+        const t = String((k && k.content) || "").replace(/[\u3000\u200b\u200c\u200d\ufeff\s]/g, "");
+        return !t;
+    }
+    /** 事务搬块：ids 依序搬到 parentID 下；afterId 为空串表示放到文档开头。 */
+    async msMoveBlocks(parentID, ids, afterId) {
+        const list = (ids || []).map(String).filter(x => MSCORE.ID_RE.test(x));
+        if (!list.length) return 0;
+        let prev = afterId ? String(afterId) : "";
+        const ops = list.map(id => {
+            const op = {action: "move", id, parentID, previousID: prev};
+            prev = id;
+            return op;
+        });
+        const reqId = () => (Date.now() % 100000) * 10 + Math.floor(Math.random() * 10);
+        try {
+            await this.msApi("/api/transactions",
+                {reqId: reqId(), transactions: [{doOperations: ops, undoOperations: []}]});
+        } catch (e) {
+            // 整批失败就逐个搬，保证不中断（同一个块，不会重复落库）
+            for (const op of ops) {
+                await this.msApi("/api/transactions",
+                    {reqId: reqId(), transactions: [{doOperations: [op], undoOperations: []}]});
+            }
+        }
+        return list.length;
+    }
+    async msDeleteBlock(id) {
+        try { await this.msApi("/api/block/deleteBlock", {id}); return true; }
+        catch (e) { console.warn("[merge-split] 删块失败", id, e && e.message); return false; }
+    }
+    /** 建壳文档时内核会塞一个空段落块，记下来，搬完内容再删。 */
+    async msShellBlankIds(docId) {
+        return (await this.msBlockList(docId)).filter(k => this.msIsBlankBlock(k)).map(k => k.id);
+    }
+    /** 文档里最靠上的标题层级（1–6），没有标题返回 0。 */
+    msTopHeadingLevel(blocks) {
+        const hs = (blocks || []).filter(k => k.type === "h" && /^h[1-6]$/.test(String(k.subType)));
+        if (!hs.length) return 0;
+        return Math.min.apply(null, hs.map(k => Number(String(k.subType).slice(1))));
+    }
+    /** 按块切章节：headId 是节标题块，bodyIds 是节内内容块，preamble 是第一个标题之前的块。 */
+    msSplitSections(blocks, level) {
+        const sections = [], preamble = [];
+        let cur = null;
+        (blocks || []).forEach(k => {
+            if (k.type === "h" && String(k.subType) === "h" + level) {
+                if (cur) sections.push(cur);
+                cur = {headId: k.id, title: String(k.content || ""), bodyIds: []};
+            } else if (cur) {
+                cur.bodyIds.push(k.id);
+            } else {
+                preamble.push(k.id);
+            }
+        });
+        if (cur) sections.push(cur);
+        return {preamble, sections};
+    }
+    /** 追加一个一级标题块，返回块 ID（搬块的锚点）。
+     *  只调用一次接口：靠「调用前后子块 ID 的差集」认新块，不解析返回结构——
+     *  appendBlock 的返回是事务数组，按结构判断会误判失败并重试，结果追加出多个重复标题。 */
+    async msAppendHeading(docId, text) {
+        const clean = String(text || "").replace(/\r?\n/g, " ").trim() || "未命名";
+        const before = (await this.msBlockList(docId)).map(k => k.id);
+        const beforeSet = new Set(before);
+        let err = "";
+        try {
+            await this.msApi("/api/block/appendBlock",
+                {parentID: docId, dataType: "markdown", data: "# " + clean});
+        } catch (e) { err = String(e && e.message || e); }
+        for (let i = 0; i < 8; i++) {
+            const now = await this.msBlockList(docId);
+            const added = now.filter(k => !beforeSet.has(k.id));
+            if (added.length && added[added.length - 1].type === "h") return added[added.length - 1].id;
+            await new Promise(r => setTimeout(r, 200));
+        }
+        throw new Error("追加标题块失败：" + clean + (err ? "（" + err + "）" : ""));
+    }
+    /** 批量改标题层级（delta=-1 提一级，+1 降一级）。只动标题块；含块引用的标题跳过（kramdown 里的
+     *  ((id "文字")) 经 markdown 再解析会退化成纯文本，宁可不改）。custom-* 属性改完补回。 */
+    async msShiftHeadings(ids, delta) {
+        let ok = 0, skipped = 0;
+        for (const id of (ids || [])) {
+            try {
+                const kr = String(await this.msApi("/api/block/getBlockKramdown", {id}) || "");
+                const first = kr.split(/\r?\n/)[0] || "";
+                const m = first.match(/^(\s*)(#+)(\s+)([\s\S]*)$/);
+                if (!m) { skipped++; continue; }
+                const n = m[2].length;
+                const to = Math.min(6, Math.max(1, n + delta));
+                if (to === n) { ok++; continue; }
+                const body = m[4];
+                if (body.indexOf("((") >= 0 || body.indexOf('data-type="block-ref"') >= 0) {
+                    console.warn("[merge-split] 标题含块引用，跳过改级：" + id);
+                    skipped++; continue;
+                }
+                const attrs = await this.msApi("/api/attr/getBlockAttrs", {id}) || {};
+                const custom = {};
+                Object.keys(attrs).forEach(k => { if (/^custom-/.test(k) && attrs[k]) custom[k] = attrs[k]; });
+                await this.msApi("/api/block/updateBlock",
+                    {id, dataType: "markdown", data: "#".repeat(to) + " " + body});
+                if (Object.keys(custom).length) {
+                    await this.msApi("/api/attr/setBlockAttrs", {id, attrs: custom});
+                }
+                ok++;
+            } catch (e) {
+                console.warn("[merge-split] 改标题级失败", id, e && e.message);
+                skipped++;
+            }
+        }
+        return {ok, skipped};
+    }
     async msRemoveDocs(ids) {
         for (const id of (ids || [])) await this.msApi("/api/filetree/removeDocByID", {id});
     }
@@ -5307,7 +5438,9 @@ module.exports = class DocNumberPlugin extends Plugin {
         throw new Error("未知操作：" + op);
     }
 
-    /** 功能 3：把子文档合并到父文档末尾，文档名作一级标题、正文标题降一级，删子文档。 */
+    /** 功能 3：把子文档合并到父文档末尾。
+     *  v1.2.4 改为「搬块」：文档名建一个一级标题块，子文档正文块原样搬到该标题之后，
+     *  块 ID 不变 → 题注属性与交叉引用不丢；节内标题降一级复原。 */
     async msMergeChildren(target, meta) {
         if (!meta) throw new Error("读不到目标文档元数据");
         const root = {id: target.id, path: meta.path, children: []};
@@ -5323,23 +5456,35 @@ module.exports = class DocNumberPlugin extends Plugin {
         });
         const backupFile = await this.msBackup("merge-children", [meta].concat(ordered),
                                                {target: target.id, deleted: topIds});
-        const text = await this.msCollect(ordered);
-        if (!text) throw new Error("子文档内容为空，未做任何改动");
-        try {
-            // 一次写整篇（原内容 + 新段），不用 appendBlock：追加会把思源自带的
-            // 「　　‍」空段落块夹在中间，用户看到的就是「又多了个空行」。
-            const rows = await this.msDocMeta([target.id]);
-            const base = await this.msStripMdSafe(target.id, rows && rows[0] && rows[0].content);
-            const combined = MSCORE.trimBlankLines([base, text].filter(Boolean).join("\n\n"));
-            await this.msWriteWhole(target.id, combined);
-        } catch (e) { throw new Error(e.message + "。备份：" + backupFile); }
+        let moved = 0;
+        // 父文档原本是空的（被拆分清空过）时，内核会留一个空段落块，合并完要清掉，
+        // 否则合并后的正文开头多一行空行；父文档本来就有内容则不动。
+        const beforeBlocks = await this.msBlockList(target.id);
+        const hadContent = beforeBlocks.some(k => !this.msIsBlankBlock(k));
+        for (const c of ordered) {
+            const kids = await this.msBlockList(c.id);
+            if (!kids.length) continue;                     // 空壳子文档，稍后一并删
+            const name = this.msStripName(String(c.content || "")) || String(c.content || c.id);
+            const head = await this.msAppendHeading(target.id, name);
+            await this.msMoveBlocks(target.id, kids.map(k => k.id), head);
+            await this.msShiftHeadings(kids.filter(k => k.type === "h").map(k => k.id), +1);
+            moved += kids.length;
+        }
+        if (!moved) throw new Error("子文档内容为空，未做任何改动");
+        if (!hadContent) {
+            for (const k of await this.msBlockList(target.id)) {
+                if (!this.msIsBlankBlock(k)) break;
+                await this.msDeleteBlock(k.id);
+            }
+        }
         await this.msRemoveDocs(topIds);
         // 只激发父文档：子文档已删除，不在「相关且仍存在」的集合里
         await this.msNumberBodies([target.id], "merge-children");
-        return "已合并 " + ordered.length + " 篇子文档到父文档末尾（编号已剔除，已补编号）。备份：" + backupFile;
+        return "已合并 " + ordered.length + " 篇子文档到父文档末尾（块原样搬移，题注与交叉引用不丢）。备份：" + backupFile;
     }
 
-    /** 功能 4：选中若干文档 → 新建平行文档【合并文档】，删选中文档。 */
+    /** 功能 4：选中若干文档 → 新建平行文档【合并文档】。
+     *  v1.2.4 改为「搬块」：每篇文档名建一个一级标题块，正文块原样搬到新文档，删源文档。 */
     async msMergeMany(targets, byId) {
         const metas = targets.map(t => byId[t.id]).filter(Boolean);
         if (metas.length < 2) throw new Error("至少要有两篇可读到的文档");
@@ -5349,18 +5494,31 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (!baseHpath || baseHpath === "/") baseHpath = first.hpath || "";
         if (!first.box || !baseHpath) throw new Error("读不到笔记本或路径，未做任何改动");
         const backupFile = await this.msBackup("merge-many", metas, {deleted: metas.map(m => m.id)});
-        const text = await this.msCollect(metas);
-        if (!text) throw new Error("参与文档内容为空，未做任何改动");
         const pos = await this.msUniqueSiblingPath(baseHpath, MSCORE.CFG.MERGE_DOC_NAME);
         const made = await this.msCreateDoc(first.box, pos.path, "");
         await this.msWaitReady(made);
-        await this.msWaitIndexed(made);
-        try { await this.msWriteWhole(made, text); }
-        catch (e) { throw new Error(e.message + "。新文档 " + made + "，备份：" + backupFile); }
+        const shells = await this.msShellBlankIds(made);
+        let moved = 0;
+        for (const m of metas) {
+            const kids = await this.msBlockList(m.id);
+            if (!kids.length) continue;
+            const name = this.msStripName(String(m.content || "")) ||
+                         String(m.hpath || "").split("/").pop() || m.id;
+            const head = await this.msAppendHeading(made, name);
+            await this.msMoveBlocks(made, kids.map(k => k.id), head);
+            await this.msShiftHeadings(kids.filter(k => k.type === "h").map(k => k.id), +1);
+            moved += kids.length;
+        }
+        if (!moved) {
+            await this.msRemoveDocs([made]);
+            throw new Error("参与文档内容为空，未做任何改动");
+        }
+        for (const sid of shells) await this.msDeleteBlock(sid);
         await this.msRemoveDocs(metas.map(m => m.id));
+        await this.msWaitIndexedAll([made]);
         // 只激发新建的【合并文档】：选中的源文档已删除
         await this.msNumberBodies([made], "merge-many", {newIds: [made]});
-        return "已把 " + metas.length + " 篇合并为「" + pos.name + "」（编号已剔除，已补编号）。备份：" + backupFile;
+        return "已把 " + metas.length + " 篇合并为「" + pos.name + "」（块原样搬移，题注与交叉引用不丢）。备份：" + backupFile;
     }
     /** Q4：同名已存在时自动加序号（合并文档 2、3…）。 */
     async msUniqueSiblingPath(hpath, base) {
@@ -5378,12 +5536,17 @@ module.exports = class DocNumberPlugin extends Plugin {
         throw new Error("无法确定可用的合并文档名");
     }
 
-    /** 功能 1/2：按最高层级标题拆分；原最高层标题变文档名不显示，其余标题提升一级。 */
+    /** 功能 1/2：按最高层级标题拆分。
+     *  v1.2.4 改为「建空壳 + 搬块」：不再导出 markdown 重建正文，块 ID 不变，
+     *  于是题注属性 custom-xref、块引用、反链都不再丢。
+     *  乙方案（用户 2026-11-14 拍板）：原节标题块丢弃（节名已成文档名），
+     *  节内其余标题提升一级，保持与旧版一致的版式。 */
     async msSplit(target, meta, op) {
-        const md = await this.msStripMdSafe(target.id, meta.content);
-        const level = MSCORE.detectTopLevel(md);
+        const blocks = await this.msBlockList(target.id);
+        if (!blocks.length) throw new Error("文档为空，不拆分");
+        const level = this.msTopHeadingLevel(blocks);
         if (!level) throw new Error("整个内容没有任何标题，不拆分");
-        const parts = MSCORE.splitByLevel(md, level);
+        const parts = this.msSplitSections(blocks, level);
         if (!parts.sections.length) throw new Error("未切出任何章节，不拆分");
         // 编号插件可能刚给文档改名，缓存的 meta.hpath 会过期 → 建子文档时内核报
         // "document metadata is not ready"。实时查一次，失败再回退缓存。
@@ -5393,26 +5556,31 @@ module.exports = class DocNumberPlugin extends Plugin {
         const box = meta.box || target.box;
         if (!box) throw new Error("读不到笔记本 ID，未做任何改动");
         const backupFile = await this.msBackup(op, [meta], {target: target.id, level});
-        const created = [];
+        const created = [], headIds = [];
         for (const sec of parts.sections) {
-            const name = this.msStripName(sec.title);
+            const name = this.msStripName(String(sec.title || "").trim()) || String(sec.title || "").trim();
+            if (!name) continue;
             const path = (op === "split-sub") ? MSCORE.hpathChild(hpath, name)
                                              : MSCORE.hpathSibling(hpath, name);
-            const body = MSCORE.promoteBody(sec.body);      // 其余标题提升一级；原最高层标题不写入
-            const made = await this.msCreateDoc(box, path, body);
+            const made = await this.msCreateDoc(box, path, "");
+            await this.msWaitReady(made);
+            const shells = await this.msShellBlankIds(made);
+            await this.msMoveBlocks(made, sec.bodyIds, "");     // 内容块原样搬到文档开头
+            for (const sid of shells) await this.msDeleteBlock(sid);
+            // 原最高层标题已变成文档名 → 节内标题提升一级
+            const heads = (await this.msBlockList(made)).filter(k => k.type === "h").map(k => k.id);
+            await this.msShiftHeadings(heads, -1);
             created.push(made);
+            headIds.push(sec.headId);
         }
-        // v1.2.3 性能：先全部建完，再统一等一次进索引。
-        // 旧写法逐篇 msWaitIndexed（实测 2.1–3.0s）+ 固定 sleep 500ms，等于把
-        // 「固定一次的索引流水延迟」乘上篇数，3 篇就要 9s，全部时间都耗在等待上。
+        if (!created.length) throw new Error("未切出任何可搬移的章节，未做改动");
+        // 乙方案：原章节标题块丢弃（标题文字已作为文档名）
+        for (const hid of headIds) await this.msDeleteBlock(hid);
         await this.msWaitIndexedAll(created);
-        // 原文档：一次 updateBlock 只写一级标题前的文本，避免 clear+append 留下空段落块
-        const preamble = MSCORE.trimBlankLines(parts.preamble);
-        await this.msApi("/api/block/updateBlock",
-            {id: target.id, dataType: "markdown", data: preamble || ""});
-        // 「拆分为多个平行文档」且清空后内容为空 → 删除原文档（用户 10:17 补充）
+        // 原文档：只留第一个标题之前的前言块，全程不做文本重写
+        const remain = await this.msBlockList(target.id);
         let removedSource = false;
-        if (op === "split-sibling" && !preamble && MSCORE.CFG.DELETE_EMPTY_SIBLING_SOURCE) {
+        if (op === "split-sibling" && remain.every(k => this.msIsBlankBlock(k)) && MSCORE.CFG.DELETE_EMPTY_SIBLING_SOURCE) {
             await this.msRemoveDocs([target.id]);
             removedSource = true;
         }
@@ -5421,6 +5589,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (!removedSource) related.push(target.id);
         await this.msNumberBodies(related, op, {newIds: created});
         return "已拆为 " + created.length + " 个" + (op === "split-sub" ? "子文档" : "平行文档") +
-               "；原文档" + (removedSource ? "内容为空，已删除" : "仅保留前言") + "。备份：" + backupFile;
+               "（块原样搬移，题注与交叉引用不丢）；原文档" + (removedSource ? "内容为空，已删除" : "只保留前言") +
+               "。备份：" + backupFile;
     }
 };
