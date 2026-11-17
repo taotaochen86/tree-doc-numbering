@@ -1,4 +1,4 @@
-/* 子文档自动编号 v1.2.4 · 本文件由 build.py 生成，请勿手改
+/* 子文档自动编号 v1.2.5 · 本文件由 build.py 生成，请勿手改
  * 源码：fusion/ 基线 + 融合补丁（详见 fusion/README.md）
  * 加载器用 window.eval 包 CommonJS → 只能写 module.exports = class extends Plugin
  */
@@ -1595,7 +1595,7 @@ const DN = globalThis.DocNumbering;
 const BN = globalThis.BodyNumbering;
 
 /* 版本号唯一来源：build.py 会拿它和 plugin.json 的 version 比对，不一致直接报错。 */
-const PLUGIN_VERSION = "1.2.4";
+const PLUGIN_VERSION = "1.2.5";
 
 const UNDO_FILE = "undo-last.json";
 const BODY_UNDO_FILE = "body-undo-last.json";
@@ -1621,7 +1621,10 @@ const DEFAULT_CONFIG = {
     lastDefaultFormats: null, // 上次用过的全局默认模板，换格式时用来剥旧号
     defaultsVersion: 2,       // 一次性迁移标记：v0.3 旧默认 → v0.4 新默认
     // 正文标题编号（v0.5.0）：快捷键 Ctrl+Alt+1..5；模板缺省用 BN.BUILTIN_BODY_FORMATS
-    bodyEnabled: true,        // 快捷键开关（面板「正文标题编号」区）
+    bodyEnabled: true,        // 正文编号功能开关（面板「正文标题编号」区）
+    /* v1.2.5：快捷键单独一个开关，默认关。旧版把它和 bodyEnabled 混用，默认开着又无条件
+     * 拦截 Ctrl+Alt+1..5，无编号文档里思源原生「设为 N 级标题」被吞（用户 2026-11-17 报障）。 */
+    bodyHotkey: false,        // Ctrl+Alt+1..5 补号开关（跟随式：原生先设标题级别，插件事后补号）
     bodyAuto: false,         // v0.6.0 正文自动编号：savedoc 触发 + 防抖，默认关，面板里开
     bodyFormats: null,        // null = 内置默认；自定义后为 {1..5}
     bodyLastFormats: null,    // 上次用过的正文模板，换模板时剥旧号兜底
@@ -2398,8 +2401,14 @@ module.exports = class DocNumberPlugin extends Plugin {
             });
         }
         this._onBodyHotkey = (ev) => this.onBodyHotkey(ev);
-        if (typeof document !== "undefined") {
-            document.addEventListener("keydown", this._onBodyHotkey, true);
+        /* v1.2.5：挂 window 捕获阶段（window→document→target 的捕获流最前段）。
+         * 挂在 document 上时实测拦不住思源自己的同名全局热键：插件已经把段落设成
+         * 带编号的 1 级标题，思源又按原生语义「同级再按取消标题」把它打回正文。
+         * 提到 window 后先于思源处理，再 stopImmediatePropagation 阻断后续监听。 */
+        this._bodyHotkeyTarget = (typeof window !== "undefined") ? window
+                                : ((typeof document !== "undefined") ? document : null);
+        if (this._bodyHotkeyTarget) {
+            this._bodyHotkeyTarget.addEventListener("keydown", this._onBodyHotkey, true);
         }
 
         this._topBar = this.addTopBar({
@@ -2421,8 +2430,9 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (this._autoTimer) clearTimeout(this._autoTimer);
         if (this._bodyTimer) clearTimeout(this._bodyTimer);
         if (this._bodyRetryTimer) clearTimeout(this._bodyRetryTimer);
-        if (this._onBodyHotkey && typeof document !== "undefined") {
-            document.removeEventListener("keydown", this._onBodyHotkey, true);
+        if (this._onBodyHotkey && this._bodyHotkeyTarget) {
+            this._bodyHotkeyTarget.removeEventListener("keydown", this._onBodyHotkey, true);
+            this._bodyHotkeyTarget = null;
         }
         try { delete globalThis.__siyuanDocNumTest; } catch (e) { /* ignore */ }
     }
@@ -2508,6 +2518,8 @@ module.exports = class DocNumberPlugin extends Plugin {
 
     async saveConfig() {
         await this.saveData(CONFIG_FILE, JSON.stringify(this._config, null, 2));
+        /* v1.2.5：改了编号范围 / 开关，快捷键判定缓存必须作废，否则要等 60 秒 TTL 才生效 */
+        if (this._bodyKeyCache) this._bodyKeyCache.clear();
     }
 
     async getConfig() {
@@ -2973,11 +2985,11 @@ module.exports = class DocNumberPlugin extends Plugin {
             + "<div class='dn-opt dn-opt--tight'>"
             + "<div class='dn-opt__body'>"
             + "<div class='dn-opt__title'>内容标题快捷键 Ctrl+Alt+1…5</div>"
-            + "<div class='dn-opt__desc'>把光标所在段落设为对应级标题并编号；没有文档编号的篇自动跳过</div>"
+            + "<div class='dn-opt__desc'>只对「当前编号范围内、且带插件编号属性」的文档补编号：按键先交给思源原生把段落设成标题级别，插件随后静默补号，不弹任何提示；其它文档完全不动。</div>"
             + "</div>"
             + "<input type='checkbox' class='b3-switch' id='dn-bodyen' "
             + "aria-label='启用内容标题快捷键' title='Ctrl+Alt+1…5 开关' "
-            + (cfg.bodyEnabled === false ? "" : "checked") + ">"
+            + (cfg.bodyHotkey === true ? "checked" : "") + ">"
             + "</div>"
             + "<div class='dn-opt dn-opt--tight'>"
             + "<div class='dn-opt__body'>"
@@ -3213,7 +3225,7 @@ module.exports = class DocNumberPlugin extends Plugin {
         /* 正文标题编号：开关 / 模板 / 实时预览 / 保存 / 恢复 / 撤销（v0.5.0） */
         const cbBodyEn = q("#dn-bodyen");
         if (cbBodyEn) cbBodyEn.addEventListener("change", (e) => {
-            cfg.bodyEnabled = e.target.checked;
+            cfg.bodyHotkey = e.target.checked;
             this.saveConfig();
         });
         const cbBodyAuto = q("#dn-bodyauto");
@@ -4682,7 +4694,9 @@ module.exports = class DocNumberPlugin extends Plugin {
 
     onBodyHotkey(ev) {
         if (!ev || ev.repeat || ev.isComposing) return;
-        if (this._config && this._config.bodyEnabled === false) return;   // 面板里关了快捷键
+        /* v1.2.5：快捷键走独立开关 bodyHotkey（默认关）。关着就完全不碰键盘，
+         * 思源原生 Ctrl+Alt+1..5（设为 1~5 级标题）照常工作。 */
+        if (!this._config || this._config.bodyHotkey !== true) return;
         if (!ev.ctrlKey || !ev.altKey || ev.shiftKey || ev.metaKey) return;
         const t = ev.target;
         const tag = t && t.tagName ? String(t.tagName).toLowerCase() : "";
@@ -4690,10 +4704,97 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (t && t.closest && t.closest(".b3-dialog")) return;
         const m = /^(?:Digit|Numpad)([1-5])$/.exec(String(ev.code || ""));
         if (!m || Number(m[1]) > BN.LEVEL_MAX) return;
-        ev.preventDefault();
-        ev.stopPropagation();
-        this.numberBodyAtCursor(Number(m[1])).catch((e) =>
-            msg("正文编号失败：" + e.message, 8000, "error"));
+        const ctx = this.currentBodyContext();
+        if (!ctx || !ctx.blockId) return;
+        ctx.docId = this.currentDocIdFromDom(t);
+        /* 先判「这篇文档归不归插件管」，不归就一个字都不拦，事件原样落到思源原生标题快捷键。
+         * 判据：① 在当前编号范围内 ② 标题里有节/章编号（或文档块上有 custom-doc-num）。
+         * 缓存没热（判不准）时同样放行并异步补缓存 —— 宁可不接管，也不吞用户的键。 */
+        const verdict = this.bodyHotkeyVerdict(ctx);
+        if (verdict === false) return;
+        /* 跟随式接管：不抢同一次按键，交给思源原生先把段落设成 N 级标题，插件稍后补编号。
+         * 原因（2026-11-17 真机实测）：思源自己的全局热键注册得比插件早，插件拦不住；
+         * 硬拦的结果是「插件写完编号 → 原生再按同级取消标题」把刚设好的 h1 打回正文。
+         * 所以这里一个字都不 preventDefault，按键效果以原生为准。 */
+        this.bodyHotkeyFollow(Number(m[1]), ctx);
+    }
+
+    /** 按键后延迟补编号：只在本块真的变成 N 级标题时才动手，全程静默。 */
+    bodyHotkeyFollow(lv, ctx) {
+        const bid = ctx && ctx.blockId;
+        if (!bid) return;
+        if (this._bodyFollowTimer) { clearTimeout(this._bodyFollowTimer); this._bodyFollowTimer = null; }
+        this._bodyFollowTimer = setTimeout(() => {
+            this._bodyFollowTimer = null;
+            (async () => {
+                if (typeof document === "undefined") return;
+                const el = document.querySelector('[data-node-id="' + bid + '"]');
+                if (!el || !el.closest || !el.closest(".protyle-wysiwyg")) return;
+                /* 原生「同级再按取消标题」会把 subtype 改回非 hN，这种收手不回写 */
+                if (String(el.getAttribute("data-subtype") || "") !== "h" + lv) return;
+                const base = {blockId: bid, docTitle: ctx.docTitle || "",
+                              docId: ctx.docId || this.currentDocIdFromDom(el)};
+                if (!base.docId) return;
+                let v = this.bodyHotkeyVerdict(base);
+                if (v === "cold") {
+                    const p = this.warmBodyHotkey(base);
+                    if (p && p.then) await p;
+                    v = this.bodyHotkeyVerdict(base);
+                }
+                if (v !== "yes") return;
+                await this.numberBodyAtCursor(lv, {context: base, silent: true});
+            })().catch((e) => console.warn("[doc-num] 快捷键补编号失败", e));
+        }, 220);
+    }
+
+    /** 当前文档 ID：思源的文档标题块 .protyle-title 带 data-node-id，其值就是文档块 ID。 */
+    currentDocIdFromDom(el) {
+        try {
+            if (typeof document === "undefined") return "";
+            const protyle = (el && el.closest) ? el.closest(".protyle") : null;
+            const titleEl = (protyle || document).querySelector(".protyle-title[data-node-id]");
+            const id = titleEl ? String(titleEl.getAttribute("data-node-id") || "") : "";
+            return ID_RE.test(id) ? id : "";
+        } catch (e) { return ""; }
+    }
+
+    /** 同步判定（只读缓存）："yes" = 归插件管 / false = 不归 / "cold" = 还没算过。
+     *  缓存键是文档 ID，带标题快照：标题一改（增删编号）自动失效重算。 */
+    bodyHotkeyVerdict(ctx) {
+        if (!ctx || !ctx.docId) return false;
+        if (!this._bodyKeyCache) this._bodyKeyCache = new Map();
+        const e = this._bodyKeyCache.get(ctx.docId);
+        if (!e || e.title !== (ctx.docTitle || "")) return "cold";
+        if (Date.now() - e.ts > 60000) return "cold";
+        return e.ok ? "yes" : false;
+    }
+
+    /** 异步算一次并存缓存：范围判定要查库，编号判定可能要读块属性。 */
+    warmBodyHotkey(ctx) {
+        const docId = ctx && ctx.docId;
+        if (!docId) return null;
+        if (!this._bodyKeyCache) this._bodyKeyCache = new Map();
+        if (!this._bodyKeyWarming) this._bodyKeyWarming = new Set();
+        if (this._bodyKeyWarming.has(docId)) return null;
+        this._bodyKeyWarming.add(docId);
+        const title = ctx.docTitle || "";
+        return (async () => {
+            let ok = false;
+            try {
+                if (await this.docInTargets(docId)) {
+                    /* 只认插件自己写下的文档编号属性（custom-doc-num-meta 里的 num）。
+                     * 不用「标题里有号」当判据：标题带号但属性缺失的文档（第三方工具或手工新建的），
+                     * 正文编号写不出号，真机实测会把一级标题降级成正文（2026-11-17 抓到）。 */
+                    const numAttr = await this.readDocNumAttr(docId);
+                    ok = !!(numAttr && String(numAttr.num || "").trim());
+                }
+            } catch (e) {
+                ok = false;
+            } finally {
+                this._bodyKeyWarming.delete(docId);
+            }
+            this._bodyKeyCache.set(docId, {ok: ok, title: title, ts: Date.now()});
+        })().catch(() => {});
     }
 
     /* ---------------- 自动触发 ---------------- */
