@@ -2149,6 +2149,46 @@ module.exports = class DocNumberPlugin extends Plugin {
 
     /* ---------------- 菜单：范围选择 ---------------- */
 
+    /** 取笔记本 ID（必须同步：右键菜单要在同一帧里挂完，await 会把菜单等没）。
+     *  ① data-tree-key="notebook:<ID>"（3.8.10 实测最稳，节点自带）
+     *  ② 节点自身其它属性 → ③ 向上 3 层祖先属性 → ④ 笔记本名唯一匹配缓存列表。
+     *  属性候选不在已知笔记本列表里时视为“不是笔记本”（如顶级文档），不接管；
+     *  名字重名返回空串：宁可不挂菜单，也不把操作挂到错的笔记本上。 */
+    resolveNotebookId(nodeEl) {
+        const pick = (el, name) => {
+            if (!el || !el.getAttribute) return "";
+            const v = String(el.getAttribute(name) || "").trim();
+            return ID_RE.test(v) ? v : "";
+        };
+        /* ① 树节点的 data-tree-key 形如 "notebook:20230217164836-id29ja1" */
+        const treeKey = nodeEl.getAttribute ? String(nodeEl.getAttribute("data-tree-key") || "") : "";
+        const keyMatch = treeKey.match(/^notebook:(\S+)$/);
+        if (keyMatch && ID_RE.test(keyMatch[1])) {
+            const books0 = this._notebookCache || [];
+            const known0 = new Set(books0.map((b) => String((b && b.id) || "")));
+            if (!known0.size || known0.has(keyMatch[1])) return keyMatch[1];
+        }
+        const cands = [];
+        ["data-node-id", "data-notebook-id", "data-notebook", "data-url", "data-box"]
+            .forEach((n) => { const v = pick(nodeEl, n); if (v) cands.push(v); });
+        let up = nodeEl.parentElement;
+        for (let i = 0; i < 3 && up; i++) {
+            ["data-url", "data-notebook-id", "data-node-id"].forEach((n) => {
+                const v = pick(up, n); if (v) cands.push(v);
+            });
+            up = up.parentElement;
+        }
+        const books = this._notebookCache || [];
+        const known = new Set(books.map((b) => String((b && b.id) || "")));
+        const hit = cands.find((id) => known.has(id));
+        if (hit) return hit;
+        const textEl = nodeEl.querySelector(".b3-list-item__text");
+        const name = textEl ? String(textEl.textContent || "").trim() : "";
+        if (!name) return "";
+        const same = books.filter((b) => String((b && b.name) || "").trim() === name);
+        return same.length === 1 ? String(same[0].id || "") : "";
+    }
+
     onDocTreeMenu(event) {
         const detail = event && event.detail;
         if (!detail || !detail.menu || !detail.elements || !detail.elements.length) return;
@@ -2158,14 +2198,18 @@ module.exports = class DocNumberPlugin extends Plugin {
         if (!nodeEl || !nodeEl.getAttribute) return;
         const domType = (nodeEl.getAttribute("data-type") || "").toLowerCase();
 
-        /* 实测（思源 3.8.9）：笔记本节点 li[data-type="navigation-root"] 的
-         * data-node-id 是空字符串，笔记本 ID 在父级 ul[data-url] 上。
-         * 旧版按 data-node-id 取 ID，右键笔记本会直接 return，菜单根本不出现。 */
+        /* 笔记本节点：li[data-type="navigation-root"]。
+         * 3.8.9 实测：笔记本节点的 data-node-id 是空串，笔记本 ID 在父级 ul[data-url] 上。
+         * 3.8.10 起前端改用内部 tree 数据的 notebookId，DOM 上那道线索不一定还在 ——
+         * 取不到 ID 就直接 return，右键笔记本就整块没有菜单（2026-11-19 家机复现）。
+         * 改为多路兜底：节点/祖先属性 → 笔记本名唯一匹配；仍取不到就不挂菜单，
+         * 绝不拿错的 ID 去动整个笔记本。 */
         if (domType === "navigation-root") {
-            const ul = nodeEl.parentElement;
-            const box = (ul && ul.getAttribute("data-url"))
-                || nodeEl.getAttribute("data-node-id") || "";
-            if (!box || !ID_RE.test(box)) return;
+            const box = this.resolveNotebookId(nodeEl);
+            if (!box) {
+                this.notebooks().catch(() => {});   // 后台补一次列表，下次右键即可按名字命中
+                return;
+            }
             const books = this._notebookCache || [];
             const book = books.find((b) => b.id === box);
             const textEl = nodeEl.querySelector(".b3-list-item__text");
